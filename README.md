@@ -15,7 +15,7 @@ A resizable widget that shows Top 25 college football games with live scores.
   - **Every 2 minutes while any game is live**, or within 15 minutes of kickoff.
   - Right away when you tap the **⟳** button.
 - **Order:** live games, then upcoming games by kickoff, then finals.
-- **Tap a game** to open your Top 25 site.
+- **Tap a game** for details: score by quarter, live down & distance, scoring plays, team stats, leaders, and game info. It refreshes every 30 seconds while the game is live.
 
 Scores come from ESPN's public college football scoreboard. Without a filter, that feed returns games involving ranked teams.
 

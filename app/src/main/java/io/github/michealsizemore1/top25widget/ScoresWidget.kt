@@ -200,13 +200,14 @@ private fun Header(updated: Long?, refreshing: Boolean, error: String?, narrow: 
 
 @Composable
 private fun GameCard(game: Game, narrow: Boolean, detailed: Boolean) {
+    val context = LocalContext.current
     Column(
         modifier = GlanceModifier
             .fillMaxWidth()
             .background(Palette.card)
             .cornerRadius(12.dp)
             .padding(horizontal = if (narrow) 8.dp else 10.dp, vertical = 6.dp)
-            .clickable(openSite()),
+            .clickable(actionStartActivity(GameActivity.intent(context, game.id))),
     ) {
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = GlanceModifier.defaultWeight()) {
