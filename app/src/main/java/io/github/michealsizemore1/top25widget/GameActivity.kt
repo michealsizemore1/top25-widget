@@ -134,6 +134,7 @@ class GameActivity : Activity() {
         val home = (0 until competitors.length()).map { competitors.getJSONObject(it) }
             .firstOrNull { it.optString("homeAway") == "home" } ?: JSONObject()
 
+        currentLive = if (state == "in") liveInfo(j) else null
         renderScoreHeader(away, home, state, type)
         renderLinescore(away, home)
         renderSituation(j, state)
@@ -194,8 +195,20 @@ class GameActivity : Activity() {
                         else team.optString("location", team.optString("displayName")),
                     if (lost) C.dim else C.text, 20f, bold = !lost,
                 ))
-                if (record.isNotBlank()) addView(label(record, C.muted, 14f))
+                // Record, then timeouts left (lit) and used (dim) during live games.
+                val live = currentLive
+                val left = live?.let { if (c.optString("homeAway") == "home") it.homeTimeouts else it.awayTimeouts } ?: -1
+                if (record.isNotBlank() || left >= 0) addView(row().apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    if (record.isNotBlank()) addView(label(record, C.muted, 14f))
+                    if (left >= 0) {
+                        addView(label("   " + "●".repeat(left.coerceIn(0, 3)), C.accent, 13f))
+                        addView(label("●".repeat((3 - left).coerceIn(0, 3)), C.line, 13f))
+                    }
+                })
             })
+            val hasBall = currentLive?.possessionId?.let { it.isNotBlank() && it == team.optString("id") } == true
+            if (hasBall) addView(label("🏈", C.text, 20f).apply { setPadding(0, 0, dp(8), 0) })
             if (state != "pre") {
                 addView(label(c.optString("score", ""), if (lost) C.dim else C.text, 30f, bold = true))
             }
@@ -232,15 +245,95 @@ class GameActivity : Activity() {
     }
 
     /** Down & distance / last play, when ESPN provides it during a live game. */
+    /** The live drive card: drive, down & distance, field, last play, win probability. */
     private fun renderSituation(j: JSONObject, state: String) {
         if (state != "in") return
-        val sit = j.optJSONObject("situation") ?: return
-        val down = sit.optString("downDistanceText", sit.optString("shortDownDistanceText", ""))
-        val last = sit.optJSONObject("lastPlay")?.optString("text").orEmpty()
-        if (down.isBlank() && last.isBlank()) return
-        val box = section("Now")
-        if (down.isNotBlank()) box.addView(label(down, C.accent, 16f, bold = true))
-        if (last.isNotBlank()) box.addView(label("Last play: $last", C.text, 15f))
+        val live = currentLive ?: return
+        val box = card()
+        val index = minOf(1, content.childCount)   // right under the score header
+        content.addView(box, index)
+
+        box.addView(row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("LIVE DRIVE", C.accent, 13f, bold = true).apply {
+                letterSpacing = 0.1f
+                layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+            })
+            if (live.drive.isNotBlank()) addView(label(live.drive, C.muted, 13f))
+        })
+
+        val spot = live.possessionText.takeIf { it.isNotBlank() }?.let { " at ${it.uppercase()}" }.orEmpty()
+        if (live.downText.isNotBlank() || spot.isNotBlank()) {
+            box.addView(label(live.downText + spot, C.text, 24f, bold = true).apply { setPadding(0, dp(8), 0, dp(4)) })
+        }
+
+        if (live.ballX != null) {
+            val awayAbbr = liveAway?.abbr.orEmpty()
+            val homeAbbr = liveHome?.abbr.orEmpty()
+            box.addView(ImageView(this).apply {
+                setImageBitmap(fieldBitmap(live, awayAbbr, homeAbbr, scale = 2.5f, bg = C.card))
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+            })
+        }
+
+        if (live.lastPlay.isNotBlank()) {
+            box.addView(label(live.lastPlay, C.text, 16f).apply { setPadding(0, dp(12), 0, 0) })
+        }
+        if (live.athlete.isNotBlank()) {
+            box.addView(label("▸ ${live.athlete}", C.text, 15f, bold = true).apply { setPadding(0, dp(8), 0, 0) })
+        }
+
+        live.homeWinPct?.let { hwp ->
+            box.addView(ImageView(this).apply {
+                setImageBitmap(winProbBitmap(live, scale = 2.5f, bg = C.card))
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_XY
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(8)).apply { topMargin = dp(16) }
+            })
+            box.addView(row().apply {
+                setPadding(0, dp(6), 0, 0)
+                fun pctText(v: Double) = String.format(java.util.Locale.US, "%.1f%%", v * 100)
+                addView(label("${liveAway?.abbr.orEmpty()} ${pctText(1 - hwp)}", C.text, 14f, bold = true))
+                addView(label("WIN PROBABILITY", C.dim, 12f).apply {
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                })
+                addView(label("${liveHome?.abbr.orEmpty()} ${pctText(hwp)}", C.text, 14f, bold = true))
+            })
+        }
+    }
+
+    private var currentLive: LiveInfo? = null
+    private var liveAway: TeamLine? = null
+    private var liveHome: TeamLine? = null
+
+    /** Build LiveInfo from the game summary (situation, drives, win probability). */
+    private fun liveInfo(j: JSONObject): LiveInfo? {
+        val comp = j.optJSONObject("header")?.optJSONArray("competitions")?.optJSONObject(0) ?: return null
+        val competitors = comp.optJSONArray("competitors") ?: return null
+        val list = (0 until competitors.length()).map { competitors.getJSONObject(it) }
+        val awayC = list.firstOrNull { it.optString("homeAway") == "away" } ?: return null
+        val homeC = list.firstOrNull { it.optString("homeAway") == "home" } ?: return null
+        fun teamLine(c: JSONObject): TeamLine {
+            val t = c.optJSONObject("team") ?: JSONObject()
+            return TeamLine(t.optString("id"), t.optString("location"), t.optString("abbreviation"), null, "", c.optString("score"), false)
+        }
+        val away = teamLine(awayC).also { liveAway = it }
+        val home = teamLine(homeC).also { liveHome = it }
+
+        // The summary keeps situation at the top level; LiveInfo reads it from the competition.
+        val sit = j.optJSONObject("situation") ?: JSONObject()
+        val compWithSit = JSONObject(comp.toString()).put("situation", sit)
+        val base = LiveInfo.from(compWithSit, awayC, homeC, away, home)
+
+        // Fill gaps from the summary's own drive and win-probability feeds.
+        val drive = base.drive.ifBlank { j.optJSONObject("drives")?.optJSONObject("current")?.optString("description").orEmpty() }
+        val wp = j.optJSONArray("winprobability")
+        val hwp = base.homeWinPct ?: wp?.optJSONObject(wp.length() - 1)?.optDouble("homeWinPercentage")?.takeIf { !it.isNaN() }
+        if (base.downText.isBlank() && base.lastPlay.isBlank() && hwp == null) return null
+        return base.copy(drive = drive, homeWinPct = hwp)
     }
 
     private fun renderScoringPlays(j: JSONObject) {

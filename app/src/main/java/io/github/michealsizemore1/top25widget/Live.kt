@@ -162,11 +162,12 @@ data class LiveInfo(
 private const val CARD_BG = 0xFF0D0D0D.toInt()
 
 /** The field strip: end zones in team colors, yard numbers, ball, and yellow first-down line. */
-fun fieldBitmap(l: LiveInfo, awayAbbr: String, homeAbbr: String): Bitmap {
+fun fieldBitmap(l: LiveInfo, awayAbbr: String, homeAbbr: String, scale: Float = 1f, bg: Int = CARD_BG): Bitmap {
     val w = 480f; val h = 64f
-    val bmp = Bitmap.createBitmap(w.toInt(), h.toInt(), Bitmap.Config.RGB_565)
+    val bmp = Bitmap.createBitmap((w * scale).toInt(), (h * scale).toInt(), Bitmap.Config.ARGB_8888)
     val c = Canvas(bmp)
-    c.drawColor(CARD_BG)
+    c.scale(scale, scale)
+    c.drawColor(bg)
     c.save()
     c.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, w, h), 10f, 10f, Path.Direction.CW) })
 
@@ -232,11 +233,12 @@ fun fieldBitmap(l: LiveInfo, awayAbbr: String, homeAbbr: String): Bitmap {
 }
 
 /** Win-probability bar: away share on the left in the away color. */
-fun winProbBitmap(l: LiveInfo): Bitmap {
+fun winProbBitmap(l: LiveInfo, scale: Float = 1f, bg: Int = CARD_BG): Bitmap {
     val w = 480f; val h = 10f
-    val bmp = Bitmap.createBitmap(w.toInt(), h.toInt(), Bitmap.Config.RGB_565)
+    val bmp = Bitmap.createBitmap((w * scale).toInt(), (h * scale).toInt(), Bitmap.Config.ARGB_8888)
     val c = Canvas(bmp)
-    c.drawColor(CARD_BG)
+    c.scale(scale, scale)
+    c.drawColor(bg)
     val awayShare = (1.0 - (l.homeWinPct ?: 0.5)).coerceIn(0.0, 1.0).toFloat()
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     c.save()

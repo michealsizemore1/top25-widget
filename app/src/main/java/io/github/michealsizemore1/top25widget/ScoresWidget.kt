@@ -248,12 +248,6 @@ private fun GameCard(game: Game, narrow: Boolean, detailed: Boolean) {
             }
             Status(game, narrow)
         }
-        val live = game.live
-        if (live != null && !narrow) {
-            LivePanel(game, live)
-        } else if (live != null && live.downText.isNotBlank()) {
-            Text(text = live.downText, style = style(Palette.accent, 13.sp, bold = true), maxLines = 1)
-        }
         if (detailed && game.network.isNotBlank()) {
             Spacer(modifier = GlanceModifier.height(4.dp))
             Text(text = "TV: ${game.network}", style = style(Palette.dim, 13.sp))
@@ -297,20 +291,8 @@ private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: B
         if (game.isUpcoming) {
             if (!narrow) Text(text = team.record, style = style(Palette.muted, 14.sp))
         } else {
-            val live = game.live
-            if (live != null && !narrow) {
-                // Timeouts left: lit dots remaining, dim dots used.
-                val left = live.timeoutsFor(team, game)
-                if (left >= 0) {
-                    Text(text = "●".repeat(left.coerceAtMost(3)), style = style(Palette.accent, 9.sp))
-                    Text(text = "●".repeat((3 - left).coerceAtLeast(0)) + "  ", style = style(Palette.dim, 9.sp))
-                }
-            }
             if (detailed && team.record.isNotBlank()) {
                 Text(text = "${team.record}  ", style = style(Palette.dim, 13.sp))
-            }
-            if (live != null && live.possessionId.isNotBlank() && live.possessionId == team.id) {
-                Text(text = "🏈 ", style = style(size = nameSize))
             }
             Text(
                 text = team.score,
