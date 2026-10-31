@@ -38,6 +38,7 @@ object Keys {
 fun widgetFor(league: League): LeagueScoresWidget = when (league) {
     League.CFB -> ScoresWidget()
     League.NFL -> NflScoresWidget()
+    League.WNBA -> WnbaScoresWidget()
 }
 
 /**
@@ -180,3 +181,5 @@ abstract class LeagueWidgetReceiver(private val league: League) : GlanceAppWidge
 class ScoresWidgetReceiver : LeagueWidgetReceiver(League.CFB)
 
 class NflScoresWidgetReceiver : LeagueWidgetReceiver(League.NFL)
+
+class WnbaScoresWidgetReceiver : LeagueWidgetReceiver(League.WNBA)

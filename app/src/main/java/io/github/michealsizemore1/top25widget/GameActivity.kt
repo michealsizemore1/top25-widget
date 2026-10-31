@@ -190,7 +190,7 @@ class GameActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
                 addView(label(
                     (rank?.let { "$it  " } ?: "") +
-                        if (league == League.NFL) team.optString("displayName")
+                        if (league.usesNicknames) team.optString("displayName")
                         else team.optString("location", team.optString("displayName")),
                     if (lost) C.dim else C.text, 20f, bold = !lost,
                 ))

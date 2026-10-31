@@ -29,13 +29,13 @@ class MainActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Football Scores"
+            text = "Sports Scores"
             textSize = 26f
             setTextColor(Color.WHITE)
         })
 
         root.addView(TextView(this).apply {
-            text = "Add a Top 25 or NFL widget, then long-press it and drag the edges to resize. Tap a game for details. " +
+            text = "Add a Top 25, NFL, or WNBA widget, then long-press it and drag the edges to resize. Tap a game for details. " +
                 "It refreshes every 15 minutes, every ${Config.LIVE_REFRESH_MINUTES} minutes " +
                 "during live games, and whenever you tap ⟳."
             textSize = 15f
@@ -61,6 +61,7 @@ class MainActivity : Activity() {
         }
         button("Add Top 25 widget") { pin(ScoresWidgetReceiver::class.java, "Top 25 Scores") }
         button("Add NFL widget") { pin(NflScoresWidgetReceiver::class.java, "NFL Scores") }
+        button("Add WNBA widget") { pin(WnbaScoresWidgetReceiver::class.java, "WNBA Scores") }
         button("Refresh scores now") {
             League.entries.forEach { Scheduler.refreshNow(this, it) }
             Toast.makeText(this, "Refreshing…", Toast.LENGTH_SHORT).show()

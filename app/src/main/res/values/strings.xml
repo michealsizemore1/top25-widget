@@ -1,5 +1,7 @@
 <resources>
-    <string name="app_name">Football Scores</string>
+    <string name="app_name">Sports Scores</string>
+    <string name="wnba_widget_name">WNBA Scores</string>
+    <string name="wnba_widget_description">Live WNBA scores for today\'s games</string>
     <string name="nfl_widget_name">NFL Scores</string>
     <string name="nfl_widget_description">Live NFL scores for this week\'s games</string>
     <string name="widget_name">Top 25 Scores</string>

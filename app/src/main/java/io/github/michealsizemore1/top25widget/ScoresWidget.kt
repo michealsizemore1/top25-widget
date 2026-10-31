@@ -85,6 +85,9 @@ class ScoresWidget : LeagueScoresWidget(League.CFB)
 /** NFL widget. */
 class NflScoresWidget : LeagueScoresWidget(League.NFL)
 
+/** WNBA widget. */
+class WnbaScoresWidget : LeagueScoresWidget(League.WNBA)
+
 abstract class LeagueScoresWidget(val league: League) : GlanceAppWidget() {
 
     companion object {
@@ -175,8 +178,7 @@ private fun EmptyMessage(updated: Long?) {
     Text(
         text = when {
             updated == null -> "Loading scores…"
-            LocalLeague.current == League.NFL -> "No NFL games this week"
-            else -> "No Top 25 games today"
+            else -> LocalLeague.current.emptyMessage
         },
         style = style(Palette.muted, 15.sp),
         modifier = GlanceModifier.clickable(openSite()),

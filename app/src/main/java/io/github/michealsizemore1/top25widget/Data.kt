@@ -34,7 +34,16 @@ enum class League(
     val rankedOnly: Boolean,
 ) {
     CFB("cfb", "Top 25 Scores", "Top 25", "football/college-football", "college-football", true),
-    NFL("nfl", "NFL Scores", "NFL", "football/nfl", "nfl", false);
+    NFL("nfl", "NFL Scores", "NFL", "football/nfl", "nfl", false),
+    WNBA("wnba", "WNBA Scores", "WNBA", "basketball/wnba", "wnba", false);
+
+    /** Pro leagues show team nicknames ("Chiefs", "Liberty"); college shows schools. */
+    val usesNicknames get() = this != CFB
+    val emptyMessage get() = when (this) {
+        CFB -> "No Top 25 games today"
+        NFL -> "No NFL games this week"
+        WNBA -> "No WNBA games today"
+    }
 
     /** ESPN's public scoreboard. For college, with no filter it returns games involving ranked teams. */
     val scoreboardUrl get() = "https://site.api.espn.com/apis/site/v2/sports/$path/scoreboard"
@@ -124,7 +133,7 @@ object EspnSource {
         val record = c.optJSONArray("records")?.optJSONObject(0)?.optString("summary", "") ?: ""
         return TeamLine(
             id = team.optString("id"),
-            name = if (league == League.NFL) team.optString("shortDisplayName").ifBlank { team.optString("name") }
+            name = if (league.usesNicknames) team.optString("shortDisplayName").ifBlank { team.optString("name") }
                    else team.optString("location").ifBlank { team.optString("shortDisplayName") },
             abbr = team.optString("abbreviation"),
             rank = rank.takeIf { it in 1..25 },
