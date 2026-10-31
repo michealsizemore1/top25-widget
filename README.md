@@ -1,6 +1,6 @@
-# Top 25 Scores — Android home screen widget
+# Football Scores — Android home screen widgets
 
-A resizable widget that shows Top 25 college football games with live scores.
+Two resizable widgets in one app: **Top 25 Scores** (college football games involving ranked teams) and **NFL Scores** (this week's NFL games). Both have live scores and a tap-for-details game screen.
 
 ## What it does
 
@@ -17,7 +17,7 @@ A resizable widget that shows Top 25 college football games with live scores.
 - **Order:** live games, then upcoming games by kickoff, then finals.
 - **Tap a game** for details: score by quarter, live down & distance, scoring plays, team stats, leaders, and game info. It refreshes every 30 seconds while the game is live.
 
-Scores come from ESPN's public college football scoreboard. Without a filter, that feed returns games involving ranked teams.
+Scores come from ESPN's public scoreboards. The college feed, without a filter, returns games involving ranked teams; the NFL feed returns the current week.
 
 ## Install it, no computer needed
 

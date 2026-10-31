@@ -3,6 +3,8 @@ package io.github.michealsizemore1.top25widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -17,6 +19,7 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
@@ -51,6 +54,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+/** Which league the widget being drawn belongs to. */
+private val LocalLeague = staticCompositionLocalOf { League.CFB }
+
 /** Colors matched to the Top 25 site. */
 private object Palette {
     val bg = Color(0xFF121A17)
@@ -73,7 +79,13 @@ private fun style(
     textAlign = align,
 )
 
-class ScoresWidget : GlanceAppWidget() {
+/** College Top 25 widget. */
+class ScoresWidget : LeagueScoresWidget(League.CFB)
+
+/** NFL widget. */
+class NflScoresWidget : LeagueScoresWidget(League.NFL)
+
+abstract class LeagueScoresWidget(val league: League) : GlanceAppWidget() {
 
     companion object {
         // Layout "breakpoints". Glance picks the closest one as you resize.
@@ -89,7 +101,9 @@ class ScoresWidget : GlanceAppWidget() {
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { WidgetContent() }
+        provideContent {
+            CompositionLocalProvider(LocalLeague provides league) { WidgetContent() }
+        }
     }
 }
 
@@ -159,7 +173,11 @@ private fun WidgetContent() {
 @Composable
 private fun EmptyMessage(updated: Long?) {
     Text(
-        text = if (updated == null) "Loading scores…" else "No Top 25 games today",
+        text = when {
+            updated == null -> "Loading scores…"
+            LocalLeague.current == League.NFL -> "No NFL games this week"
+            else -> "No Top 25 games today"
+        },
         style = style(Palette.muted, 15.sp),
         modifier = GlanceModifier.clickable(openSite()),
     )
@@ -173,7 +191,11 @@ private fun RefreshButton(refreshing: Boolean) {
         modifier = GlanceModifier
             .size(30.dp)
             .padding(4.dp)
-            .clickable(actionRunCallback<RefreshAction>()),
+            .clickable(
+                actionRunCallback<RefreshAction>(
+                    actionParametersOf(RefreshAction.LEAGUE to LocalLeague.current.key)
+                )
+            ),
     )
 }
 
@@ -192,7 +214,7 @@ private fun Header(updated: Long?, refreshing: Boolean, error: String?, narrow: 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = if (narrow) "Scores" else "Top 25 Scores",
+            text = LocalLeague.current.let { if (narrow) it.shortTitle else it.title },
             style = style(size = 17.sp, bold = true),
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight().clickable(openSite()),
@@ -211,7 +233,7 @@ private fun GameCard(game: Game, narrow: Boolean, detailed: Boolean) {
             .background(Palette.card)
             .cornerRadius(12.dp)
             .padding(horizontal = if (narrow) 8.dp else 10.dp, vertical = 6.dp)
-            .clickable(actionStartActivity(GameActivity.intent(context, game.id))),
+            .clickable(actionStartActivity(GameActivity.intent(context, LocalLeague.current, game.id))),
     ) {
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = GlanceModifier.defaultWeight()) {
@@ -236,7 +258,7 @@ private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: B
 
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (!narrow) {
-            val logo = Logos.bitmap(context, team.id)
+            val logo = Logos.bitmap(context, team.logoKey)
             if (logo != null) {
                 Image(
                     provider = ImageProvider(logo),

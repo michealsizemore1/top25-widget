@@ -29,13 +29,13 @@ class MainActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Top 25 Scores"
+            text = "Football Scores"
             textSize = 26f
             setTextColor(Color.WHITE)
         })
 
         root.addView(TextView(this).apply {
-            text = "Add the widget, then long-press it and drag the edges to resize. " +
+            text = "Add a Top 25 or NFL widget, then long-press it and drag the edges to resize. Tap a game for details. " +
                 "It refreshes every 15 minutes, every ${Config.LIVE_REFRESH_MINUTES} minutes " +
                 "during live games, and whenever you tap ⟳."
             textSize = 15f
@@ -51,17 +51,18 @@ class MainActivity : Activity() {
             ).apply { bottomMargin = px(12) })
         }
 
-        button("Add widget to home screen") {
+        fun pin(receiver: Class<*>, label: String) {
             val mgr = AppWidgetManager.getInstance(this)
-            val provider = ComponentName(this, ScoresWidgetReceiver::class.java)
             if (mgr.isRequestPinAppWidgetSupported) {
-                mgr.requestPinAppWidget(provider, null, null)
+                mgr.requestPinAppWidget(ComponentName(this, receiver), null, null)
             } else {
-                Toast.makeText(this, "Long-press your home screen → Widgets → Top 25 Scores", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Long-press your home screen → Widgets → $label", Toast.LENGTH_LONG).show()
             }
         }
+        button("Add Top 25 widget") { pin(ScoresWidgetReceiver::class.java, "Top 25 Scores") }
+        button("Add NFL widget") { pin(NflScoresWidgetReceiver::class.java, "NFL Scores") }
         button("Refresh scores now") {
-            Scheduler.refreshNow(this)
+            League.entries.forEach { Scheduler.refreshNow(this, it) }
             Toast.makeText(this, "Refreshing…", Toast.LENGTH_SHORT).show()
         }
         if (Config.SITE_URL.isNotBlank()) button("Open Top 25 site") {

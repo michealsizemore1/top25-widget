@@ -35,42 +35,53 @@ object Keys {
     val REFRESHING = booleanPreferencesKey("refreshing")
 }
 
+fun widgetFor(league: League): LeagueScoresWidget = when (league) {
+    League.CFB -> ScoresWidget()
+    League.NFL -> NflScoresWidget()
+}
+
 /**
- * Refresh schedule:
+ * Refresh schedule, per league:
  *  - every 15 minutes, always (Android's minimum for background jobs)
  *  - every LIVE_REFRESH_MINUTES while any game is live or about to kick off
  *  - immediately when you tap the refresh button
  */
 object Scheduler {
-    private const val PERIODIC = "scores_periodic"
-    private const val FAST = "scores_fast"
-    private const val NOW = "scores_now"
     const val INPUT_FAST = "fast"
+    const val INPUT_LEAGUE = "league"
+
+    private fun name(kind: String, league: League) = "scores_${kind}_${league.key}"
 
     private val online = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
         .build()
 
-    fun ensurePeriodic(ctx: Context) {
+    fun ensurePeriodic(ctx: Context, league: League) {
+        // Clean up jobs from versions before the NFL widget existed.
+        WorkManager.getInstance(ctx).apply { listOf("scores_periodic", "scores_fast", "scores_now").forEach { cancelUniqueWork(it) } }
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
-            PERIODIC,
+            name("periodic", league),
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<ScoresWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(online)
+                .setInputData(workDataOf(INPUT_LEAGUE to league.key))
                 .build(),
         )
     }
 
-    fun refreshNow(ctx: Context) {
+    fun refreshNow(ctx: Context, league: League) {
         WorkManager.getInstance(ctx).enqueueUniqueWork(
-            NOW,
+            name("now", league),
             ExistingWorkPolicy.REPLACE,
-            OneTimeWorkRequestBuilder<ScoresWorker>().setConstraints(online).build(),
+            OneTimeWorkRequestBuilder<ScoresWorker>()
+                .setConstraints(online)
+                .setInputData(workDataOf(INPUT_LEAGUE to league.key))
+                .build(),
         )
     }
 
     /** Called after each refresh. Keeps a fast refresh loop going only while it's needed. */
-    fun scheduleFastIfNeeded(ctx: Context, games: List<Game>, calledFromFastRun: Boolean) {
+    fun scheduleFastIfNeeded(ctx: Context, league: League, games: List<Game>, calledFromFastRun: Boolean) {
         val now = System.currentTimeMillis()
         val busy = games.any {
             it.isLive || (it.isUpcoming && it.startMillis - now in -3_600_000L..15 * 60_000L)
@@ -79,16 +90,16 @@ object Scheduler {
         val request = OneTimeWorkRequestBuilder<ScoresWorker>()
             .setInitialDelay(Config.LIVE_REFRESH_MINUTES, TimeUnit.MINUTES)
             .setConstraints(online)
-            .setInputData(workDataOf(INPUT_FAST to true))
+            .setInputData(workDataOf(INPUT_FAST to true, INPUT_LEAGUE to league.key))
             .build()
         // A fast run chains the next one after itself; any other run leaves an existing loop alone.
         val policy = if (calledFromFastRun) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP
-        WorkManager.getInstance(ctx).enqueueUniqueWork(FAST, policy, request)
+        WorkManager.getInstance(ctx).enqueueUniqueWork(name("fast", league), policy, request)
     }
 
-    fun cancelAll(ctx: Context) {
+    fun cancelAll(ctx: Context, league: League) {
         val wm = WorkManager.getInstance(ctx)
-        listOf(PERIODIC, FAST, NOW).forEach { wm.cancelUniqueWork(it) }
+        listOf("periodic", "fast", "now").forEach { wm.cancelUniqueWork(name(it, league)) }
     }
 }
 
@@ -96,16 +107,18 @@ class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
 
     override suspend fun doWork(): Result {
         val ctx = applicationContext
-        val ids = GlanceAppWidgetManager(ctx).getGlanceIds(ScoresWidget::class.java)
+        val league = League.from(inputData.getString(Scheduler.INPUT_LEAGUE))
+        val widget = widgetFor(league)
+        val ids = GlanceAppWidgetManager(ctx).getGlanceIds(widget.javaClass)
         if (ids.isEmpty()) {
-            Scheduler.cancelAll(ctx)
+            Scheduler.cancelAll(ctx, league)
             return Result.success()
         }
 
         return try {
             val games = withContext(Dispatchers.IO) {
-                EspnSource.fetch().also { list ->
-                    Logos.ensure(ctx, list.flatMap { listOf(it.away.id, it.home.id) }.toSet())
+                EspnSource.fetch(league).also { list ->
+                    Logos.ensure(ctx, list.flatMap { listOf(it.away, it.home) }.associate { it.logoKey to it.logoUrl })
                 }
             }
             val json = GameJson.encode(games)
@@ -118,8 +131,8 @@ class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     prefs.remove(Keys.ERROR)
                 }
             }
-            ScoresWidget().updateAll(ctx)
-            Scheduler.scheduleFastIfNeeded(ctx, games, inputData.getBoolean(Scheduler.INPUT_FAST, false))
+            widget.updateAll(ctx)
+            Scheduler.scheduleFastIfNeeded(ctx, league, games, inputData.getBoolean(Scheduler.INPUT_FAST, false))
             Result.success()
         } catch (e: Exception) {
             ids.forEach { id ->
@@ -128,7 +141,7 @@ class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     prefs[Keys.REFRESHING] = false
                 }
             }
-            ScoresWidget().updateAll(ctx)
+            widget.updateAll(ctx)
             if (runAttemptCount < 2) Result.retry() else Result.success()
         }
     }
@@ -136,24 +149,34 @@ class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
 
 /** The ⟳ button. */
 class RefreshAction : ActionCallback {
+    companion object {
+        val LEAGUE = ActionParameters.Key<String>("league")
+    }
+
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val league = League.from(parameters[LEAGUE])
         updateAppWidgetState(context, glanceId) { it[Keys.REFRESHING] = true }
-        ScoresWidget().update(context, glanceId)
-        Scheduler.refreshNow(context)
+        widgetFor(league).update(context, glanceId)
+        Scheduler.refreshNow(context, league)
     }
 }
 
-class ScoresWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = ScoresWidget()
+abstract class LeagueWidgetReceiver(private val league: League) : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = widgetFor(league)
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
-        Scheduler.ensurePeriodic(context)
-        Scheduler.refreshNow(context)
+        Scheduler.ensurePeriodic(context, league)
+        Scheduler.refreshNow(context, league)
     }
 
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
-        Scheduler.cancelAll(context)
+        Scheduler.cancelAll(context, league)
     }
 }
+
+/** College Top 25 widget (class name kept so existing widgets survive the update). */
+class ScoresWidgetReceiver : LeagueWidgetReceiver(League.CFB)
+
+class NflScoresWidgetReceiver : LeagueWidgetReceiver(League.NFL)

@@ -19,12 +19,32 @@ object Config {
     /** Opened when you tap a game in the widget. */
     const val SITE_URL = ""  // set to your Top 25 site's full address to show "Open site" links
 
-    /** ESPN's public scoreboard. With no "groups" filter it returns games involving Top 25 teams. */
-    const val SCOREBOARD_URL =
-        "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
 
     /** How often to refresh while a game is live (minutes). Normal refresh is every 15. */
     const val LIVE_REFRESH_MINUTES = 2L
+}
+
+/** The two leagues the app has widgets for. */
+enum class League(
+    val key: String,
+    val title: String,
+    val shortTitle: String,
+    private val path: String,
+    private val espnPath: String,
+    val rankedOnly: Boolean,
+) {
+    CFB("cfb", "Top 25 Scores", "Top 25", "football/college-football", "college-football", true),
+    NFL("nfl", "NFL Scores", "NFL", "football/nfl", "nfl", false);
+
+    /** ESPN's public scoreboard. For college, with no filter it returns games involving ranked teams. */
+    val scoreboardUrl get() = "https://site.api.espn.com/apis/site/v2/sports/$path/scoreboard"
+    val summaryUrl get() = "https://site.api.espn.com/apis/site/v2/sports/$path/summary?event="
+    fun espnGameUrl(id: String) = "https://www.espn.com/$espnPath/game/_/gameId/$id"
+    fun logoKey(teamId: String) = "$key-$teamId"
+
+    companion object {
+        fun from(key: String?) = entries.firstOrNull { it.key == key } ?: CFB
+    }
 }
 
 data class TeamLine(
@@ -35,6 +55,8 @@ data class TeamLine(
     val record: String,
     val score: String,
     val winner: Boolean,
+    val logoKey: String = "",
+    val logoUrl: String = "",
 )
 
 data class Game(
@@ -55,10 +77,11 @@ data class Game(
 
 object EspnSource {
 
-    fun fetch(): List<Game> {
-        val body = String(Http.get(Config.SCOREBOARD_URL))
+    fun fetch(league: League): List<Game> {
+        val body = String(Http.get(league.scoreboardUrl))
         val events = JSONObject(body).optJSONArray("events") ?: return emptyList()
-        val games = (0 until events.length()).mapNotNull { parseEvent(events.getJSONObject(it)) }
+        val games = (0 until events.length()).mapNotNull { parseEvent(events.getJSONObject(it), league) }
+        if (!league.rankedOnly) return sort(games)
         val ranked = games.filter { it.away.rank != null || it.home.rank != null }
         return sort(ranked.ifEmpty { games })
     }
@@ -69,7 +92,7 @@ object EspnSource {
             .thenBy { it.startMillis }
     )
 
-    private fun parseEvent(ev: JSONObject): Game? {
+    private fun parseEvent(ev: JSONObject, league: League): Game? {
         val comp = ev.optJSONArray("competitions")?.optJSONObject(0) ?: return null
         val status = comp.optJSONObject("status") ?: ev.optJSONObject("status")
         val type = status?.optJSONObject("type")
@@ -79,7 +102,7 @@ object EspnSource {
         var away: TeamLine? = null
         for (i in 0 until competitors.length()) {
             val c = competitors.getJSONObject(i)
-            val team = parseTeam(c)
+            val team = parseTeam(c, league)
             if (c.optString("homeAway") == "home") home = team else away = team
         }
         if (home == null || away == null) return null
@@ -95,18 +118,21 @@ object EspnSource {
         )
     }
 
-    private fun parseTeam(c: JSONObject): TeamLine {
+    private fun parseTeam(c: JSONObject, league: League): TeamLine {
         val team = c.optJSONObject("team") ?: JSONObject()
         val rank = c.optJSONObject("curatedRank")?.optInt("current", 99) ?: 99
         val record = c.optJSONArray("records")?.optJSONObject(0)?.optString("summary", "") ?: ""
         return TeamLine(
             id = team.optString("id"),
-            name = team.optString("location").ifBlank { team.optString("shortDisplayName") },
+            name = if (league == League.NFL) team.optString("shortDisplayName").ifBlank { team.optString("name") }
+                   else team.optString("location").ifBlank { team.optString("shortDisplayName") },
             abbr = team.optString("abbreviation"),
             rank = rank.takeIf { it in 1..25 },
             record = record,
             score = c.optString("score", ""),
             winner = c.optBoolean("winner", false),
+            logoKey = league.logoKey(team.optString("id")),
+            logoUrl = team.optString("logo"),
         )
     }
 
@@ -155,19 +181,16 @@ object Logos {
     private const val SIZE_PX = 72
     private val cache = LruCache<String, Bitmap>(80)
 
-    private fun file(ctx: Context, teamId: String): File =
-        File(File(ctx.filesDir, "logos").apply { mkdirs() }, "$teamId.png")
+    private fun file(ctx: Context, key: String): File =
+        File(File(ctx.filesDir, "logos").apply { mkdirs() }, "$key.png")
 
-    /** Downloads any logos we don't have yet. Dark-background versions first, so Iowa etc. stay visible. */
-    fun ensure(ctx: Context, teamIds: Collection<String>) {
-        for (id in teamIds) {
-            if (id.isBlank()) continue
-            val f = file(ctx, id)
+    /** Downloads any logos we don't have yet (key -> URL). Dark-background versions first, so Iowa etc. stay visible. */
+    fun ensure(ctx: Context, logos: Map<String, String>) {
+        for ((key, url) in logos) {
+            if (key.isBlank() || url.isBlank()) continue
+            val f = file(ctx, key)
             if (f.exists() && f.length() > 0) continue
-            val urls = listOf(
-                "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/$id.png",
-                "https://a.espncdn.com/i/teamlogos/ncaa/500/$id.png",
-            )
+            val urls = listOf(url.replace("/500/", "/500-dark/"), url).distinct()
             for (u in urls) {
                 val bmp = try {
                     val bytes = Http.get(u)
@@ -182,11 +205,12 @@ object Logos {
         }
     }
 
-    fun bitmap(ctx: Context, teamId: String): Bitmap? {
-        cache.get(teamId)?.let { return it }
-        val f = file(ctx, teamId)
+    fun bitmap(ctx: Context, key: String): Bitmap? {
+        if (key.isBlank()) return null
+        cache.get(key)?.let { return it }
+        val f = file(ctx, key)
         if (!f.exists()) return null
-        return BitmapFactory.decodeFile(f.path)?.also { cache.put(teamId, it) }
+        return BitmapFactory.decodeFile(f.path)?.also { cache.put(key, it) }
     }
 }
 
@@ -224,11 +248,13 @@ object GameJson {
     private fun team(t: TeamLine) = JSONObject().apply {
         put("id", t.id); put("name", t.name); put("abbr", t.abbr); put("rank", t.rank ?: -1)
         put("record", t.record); put("score", t.score); put("winner", t.winner)
+        put("logoKey", t.logoKey); put("logoUrl", t.logoUrl)
     }
 
     private fun team(o: JSONObject) = TeamLine(
         id = o.optString("id"), name = o.optString("name"), abbr = o.optString("abbr"),
         rank = o.optInt("rank", -1).takeIf { it in 1..25 }, record = o.optString("record"),
         score = o.optString("score"), winner = o.optBoolean("winner"),
+        logoKey = o.optString("logoKey"), logoUrl = o.optString("logoUrl"),
     )
 }

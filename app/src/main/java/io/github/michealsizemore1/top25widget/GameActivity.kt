@@ -28,14 +28,14 @@ class GameActivity : Activity() {
 
     companion object {
         const val EXTRA_ID = "game_id"
-        private const val SUMMARY_URL =
-            "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event="
+        const val EXTRA_LEAGUE = "league"
         private const val LIVE_REFRESH_MS = 30_000L
 
-        fun intent(ctx: Context, gameId: String): Intent =
+        fun intent(ctx: Context, league: League, gameId: String): Intent =
             Intent(ctx, GameActivity::class.java)
-                .setData(Uri.parse("top25://game/$gameId"))   // keeps each game's tap distinct
+                .setData(Uri.parse("top25://game/${league.key}/$gameId"))   // keeps each game's tap distinct
                 .putExtra(EXTRA_ID, gameId)
+                .putExtra(EXTRA_LEAGUE, league.key)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     }
 
@@ -52,6 +52,7 @@ class GameActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var content: LinearLayout
     private var gameId = ""
+    private var league = League.CFB
     private var isLive = false
     private var visible = false
 
@@ -87,6 +88,7 @@ class GameActivity : Activity() {
 
     private fun handleIntent(i: Intent) {
         gameId = i.getStringExtra(EXTRA_ID) ?: i.data?.lastPathSegment.orEmpty()
+        league = League.from(i.getStringExtra(EXTRA_LEAGUE))
         content.removeAllViews()
         content.addView(label("Loading game…", C.muted, 16f))
         load(quiet = false)
@@ -97,7 +99,7 @@ class GameActivity : Activity() {
         val id = gameId
         Thread {
             val result = try {
-                JSONObject(String(Http.get(SUMMARY_URL + id)))
+                JSONObject(String(Http.get(league.summaryUrl + id)))
             } catch (e: Exception) {
                 null
             }
@@ -143,7 +145,7 @@ class GameActivity : Activity() {
         content.addView(button("Refresh") { load(quiet = true) })
         content.addView(button("Open on ESPN") {
             startActivity(Intent(Intent.ACTION_VIEW,
-                Uri.parse("https://www.espn.com/college-football/game/_/gameId/$gameId")))
+                Uri.parse(league.espnGameUrl(gameId))))
         })
         if (Config.SITE_URL.isNotBlank()) content.addView(button("Open Top 25 site") {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)))
@@ -178,7 +180,7 @@ class GameActivity : Activity() {
 
         return row().apply {
             gravity = Gravity.CENTER_VERTICAL
-            val logo = Logos.bitmap(this@GameActivity, team.optString("id"))
+            val logo = Logos.bitmap(this@GameActivity, league.logoKey(team.optString("id")))
             addView(ImageView(context).apply {
                 if (logo != null) setImageBitmap(logo)
                 layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { rightMargin = dp(12) }
@@ -187,7 +189,9 @@ class GameActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
                 addView(label(
-                    (rank?.let { "$it  " } ?: "") + team.optString("location", team.optString("displayName")),
+                    (rank?.let { "$it  " } ?: "") +
+                        if (league == League.NFL) team.optString("displayName")
+                        else team.optString("location", team.optString("displayName")),
                     if (lost) C.dim else C.text, 20f, bold = !lost,
                 ))
                 if (record.isNotBlank()) addView(label(record, C.muted, 14f))
