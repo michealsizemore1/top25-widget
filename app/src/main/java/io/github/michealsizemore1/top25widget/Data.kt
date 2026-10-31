@@ -89,6 +89,7 @@ data class Game(
     val network: String,
     val away: TeamLine,
     val home: TeamLine,
+    val live: LiveInfo? = null,
 ) {
     val isLive get() = state == "in"
     val isFinal get() = state == "post"
@@ -122,21 +123,25 @@ object EspnSource {
 
         var home: TeamLine? = null
         var away: TeamLine? = null
+        var homeC: JSONObject? = null
+        var awayC: JSONObject? = null
         for (i in 0 until competitors.length()) {
             val c = competitors.getJSONObject(i)
             val team = parseTeam(c, league)
-            if (c.optString("homeAway") == "home") home = team else away = team
+            if (c.optString("homeAway") == "home") { home = team; homeC = c } else { away = team; awayC = c }
         }
-        if (home == null || away == null) return null
+        if (home == null || away == null || homeC == null || awayC == null) return null
+        val state = type?.optString("state", "pre") ?: "pre"
 
         return Game(
             id = ev.optString("id"),
-            state = type?.optString("state", "pre") ?: "pre",
+            state = state,
             detail = type?.optString("shortDetail", "") ?: "",
             startMillis = parseDate(comp.optString("date", ev.optString("date"))),
             network = parseNetwork(comp),
             away = away,
             home = home,
+            live = if (state == "in") LiveInfo.from(comp, awayC, homeC, away, home) else null,
         )
     }
 
@@ -245,6 +250,7 @@ object GameJson {
                 put("id", g.id); put("state", g.state); put("detail", g.detail)
                 put("start", g.startMillis); put("network", g.network)
                 put("away", team(g.away)); put("home", team(g.home))
+                g.live?.let { put("live", LiveInfo.toJson(it)) }
             })
         }
     }.toString()
@@ -260,6 +266,7 @@ object GameJson {
                     detail = o.optString("detail"), startMillis = o.optLong("start"),
                     network = o.optString("network"),
                     away = team(o.getJSONObject("away")), home = team(o.getJSONObject("home")),
+                    live = LiveInfo.fromJson(o.optJSONObject("live")),
                 )
             }
         } catch (e: Exception) {
