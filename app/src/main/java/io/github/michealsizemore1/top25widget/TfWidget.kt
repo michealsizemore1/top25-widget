@@ -71,6 +71,7 @@ import java.util.concurrent.TimeUnit
 object TfConfig {
     const val DATA_URL = XcConfig.BASE + "data/ncaa-tf.json"
     const val PAGE_URL = XcConfig.BASE + "ncaa-track-field.html"
+    const val NEWS_URL = XcConfig.BASE + "data/tf-news.json"
 }
 
 data class TfStanding(val rank: Int, val team: String, val points: Int, val flag: String)
@@ -160,10 +161,15 @@ class TfWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, pa
         if (ids.isEmpty()) { TfScheduler.cancelAll(ctx); return Result.success() }
         return try {
             val json = withContext(Dispatchers.IO) { TfFeed.download() }
+            // News is optional: a hiccup there shouldn't block the rest of the widget.
+            val news = withContext(Dispatchers.IO) {
+                try { String(Http.get(TfConfig.NEWS_URL + "?t=" + System.currentTimeMillis())) } catch (e: Exception) { null }
+            }
             val now = System.currentTimeMillis()
             ids.forEach { id ->
                 updateAppWidgetState(ctx, id) { p ->
                     p[Keys.GAMES] = json; p[Keys.UPDATED] = now; p[Keys.REFRESHING] = false; p.remove(Keys.ERROR)
+                    if (news != null) p[Keys.NEWS] = news
                 }
             }
             TrackFieldWidget().updateAll(ctx)
@@ -259,6 +265,8 @@ private fun TfContent() {
     val prefs = currentState<Preferences>()
     val json = prefs[Keys.GAMES]
     val data = remember(json) { TfFeed.parse(json) }
+    val newsJson = prefs[Keys.NEWS]
+    val news = remember(newsJson) { XcFeed.headlines(newsJson, "news") }
     val updated = prefs[Keys.UPDATED]
     val refreshing = prefs[Keys.REFRESHING] ?: false
     val error = prefs[Keys.ERROR]
@@ -318,6 +326,17 @@ private fun TfContent() {
                     NextCard(next, today, narrow)
                     Spacer(modifier = GlanceModifier.height(8.dp))
                 }
+            }
+
+            if (news.isNotEmpty()) {
+                item(itemId = 3_000_000_007L) { SectionLabel("LATEST NEWS", Palette.accent) }
+                items(news.take(6), itemId = { r -> 6_000_000_000L + (r.url.hashCode().toLong() and 0x7fffffffL) }) { r ->
+                    Column(modifier = GlanceModifier.fillMaxWidth()) {
+                        ResultCard(r, today, narrow, lines = if (narrow) 4 else 3)
+                        Spacer(modifier = GlanceModifier.height(6.dp))
+                    }
+                }
+                item(itemId = 3_000_000_008L) { Spacer(modifier = GlanceModifier.height(4.dp)) }
             }
 
             item(itemId = 3_000_000_002L) { SectionLabel("2026 NCAA OUTDOOR · FINAL STANDINGS") }

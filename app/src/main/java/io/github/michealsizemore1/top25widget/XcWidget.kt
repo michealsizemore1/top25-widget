@@ -79,6 +79,17 @@ data class XcData(val meets: List<XcMeet>, val results: List<XcResult>)
 object XcFeed {
     fun download(): String = String(Http.get(XcConfig.DATA_URL + "?t=" + System.currentTimeMillis()))
 
+    /** Headlines list ("results" or "news" key) as cards. */
+    fun headlines(json: String?, key: String): List<XcResult> = try {
+        val a = JSONObject(json ?: "").optJSONArray(key)
+        if (a == null) emptyList() else (0 until a.length()).map { i ->
+            val r = a.getJSONObject(i)
+            XcResult(date(r.optString("date")), r.optString("headline"), r.optString("source"), r.optString("url"))
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
     fun parse(json: String?): XcData {
         if (json.isNullOrBlank()) return XcData(emptyList(), emptyList())
         return try {
@@ -383,7 +394,7 @@ private fun UpcomingMeetRow(m: XcMeet, today: LocalDate, narrow: Boolean) {
 }
 
 @Composable
-private fun ResultCard(r: XcResult, today: LocalDate, narrow: Boolean, lines: Int) {
+internal fun ResultCard(r: XcResult, today: LocalDate, narrow: Boolean, lines: Int) {
     Column(
         modifier = GlanceModifier.fillMaxWidth().background(Palette.card).cornerRadius(12.dp)
             .padding(horizontal = 10.dp, vertical = 7.dp)

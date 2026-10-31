@@ -33,6 +33,7 @@ object Keys {
     val UPDATED = longPreferencesKey("updated")
     val ERROR = stringPreferencesKey("error")
     val REFRESHING = booleanPreferencesKey("refreshing")
+    val NEWS = stringPreferencesKey("news")
 }
 
 fun widgetFor(league: League): LeagueScoresWidget = when (league) {
