@@ -234,14 +234,13 @@ private fun countdown(start: LocalDate, end: LocalDate, today: LocalDate): Strin
 
 /** "Men's 110m Hurdles" etc., plus the note with the event name stripped out of it. */
 private fun eventLabel(c: TfChampion): Pair<String, String> {
-    val who = if (c.men) "Men's" else "Women's"
     var event = c.event
     var note = c.note
     if (event.startsWith("Hurdles")) {
         event = if (c.men) "110m Hurdles" else "100m Hurdles"
         note = note.replace(Regex("^1[01]0m hurdles,?\\s*", RegexOption.IGNORE_CASE), "")
     }
-    return "$who $event" to note
+    return event to note
 }
 
 private fun openTfPage() =
@@ -331,9 +330,16 @@ private fun TfContent() {
                 }
             }
 
-            if (data.champions.isNotEmpty()) {
-                item(itemId = 3_000_000_004L) { SectionLabel("2026 NCAA CHAMPIONS") }
-                items(data.champions, itemId = { c -> 4_000_000_000L + (("${c.event}|${c.men}").hashCode().toLong() and 0x7fffffffL) }) { c ->
+            listOf(true to "MEN", false to "WOMEN").forEach { (isMen, label) ->
+                val group = data.champions.filter { it.men == isMen }
+                if (group.isEmpty()) return@forEach
+                item(itemId = if (isMen) 3_000_000_004L else 3_000_000_006L) {
+                    Column {
+                        Spacer(modifier = GlanceModifier.height(4.dp))
+                        SectionLabel("2026 NCAA CHAMPIONS · $label")
+                    }
+                }
+                items(group, itemId = { c -> 4_000_000_000L + (("${c.event}|${c.men}").hashCode().toLong() and 0x7fffffffL) }) { c ->
                     Column(modifier = GlanceModifier.fillMaxWidth()) {
                         ChampionRow(c, narrow)
                         Spacer(modifier = GlanceModifier.height(6.dp))
