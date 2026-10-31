@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
 /** Change these to point the widget somewhere else. */
 object Config {
     /** Opened when you tap a game in the widget. */
-    const val SITE_URL = "https://michealsizemore1.github.io/"
+    const val SITE_URL = ""  // set to your Top 25 site's full address to show "Open site" links
 
     /** ESPN's public scoreboard. With no "groups" filter it returns games involving Top 25 teams. */
     const val SCOREBOARD_URL =

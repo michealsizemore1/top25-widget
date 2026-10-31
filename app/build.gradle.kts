@@ -12,12 +12,27 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
+    }
+
+    // One fixed key so every new build can install as an update over the last one.
+    // (Personal sideloaded app only; this key is not used for the Play Store.)
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("top25.keystore")
+            storePassword = "top25widget"
+            keyAlias = "top25"
+            keyPassword = "top25widget"
+        }
     }
 
     buildTypes {
-        release { isMinifyEnabled = false }
+        debug { signingConfig = signingConfigs.getByName("fixed") }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

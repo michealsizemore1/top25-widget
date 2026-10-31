@@ -64,9 +64,16 @@ class MainActivity : Activity() {
             Scheduler.refreshNow(this)
             Toast.makeText(this, "Refreshing…", Toast.LENGTH_SHORT).show()
         }
-        button("Open Top 25 site") {
+        if (Config.SITE_URL.isNotBlank()) button("Open Top 25 site") {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)))
         }
+
+        root.addView(TextView(this).apply {
+            text = "Version ${packageManager.getPackageInfo(packageName, 0).versionName}"
+            textSize = 13f
+            setTextColor(Color.parseColor("#6B7370"))
+            setPadding(0, px(16), 0, 0)
+        })
 
         setContentView(root)
     }

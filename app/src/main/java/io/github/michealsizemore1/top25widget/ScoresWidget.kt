@@ -2,7 +2,6 @@ package io.github.michealsizemore1.top25widget
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -94,9 +93,14 @@ class ScoresWidget : GlanceAppWidget() {
     }
 }
 
-private fun openSite(): Action = actionStartActivity(
-    Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-)
+/** Header / empty-state tap: opens the app's main screen. */
+@Composable
+private fun openSite(): Action {
+    val context = LocalContext.current
+    return actionStartActivity(
+        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+}
 
 @Composable
 private fun WidgetContent() {

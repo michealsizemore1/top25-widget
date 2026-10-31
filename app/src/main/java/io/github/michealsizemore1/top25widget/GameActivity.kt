@@ -145,7 +145,7 @@ class GameActivity : Activity() {
             startActivity(Intent(Intent.ACTION_VIEW,
                 Uri.parse("https://www.espn.com/college-football/game/_/gameId/$gameId")))
         })
-        content.addView(button("Open Top 25 site") {
+        if (Config.SITE_URL.isNotBlank()) content.addView(button("Open Top 25 site") {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)))
         })
     }
