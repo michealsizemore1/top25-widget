@@ -214,6 +214,14 @@ class TrackFieldWidget : GlanceAppWidget() {
     }
 }
 
+/** Section colors: men blue, women pink, calendar amber. */
+private object TfColors {
+    val men = androidx.compose.ui.graphics.Color(0xFF5EB8FF)
+    val women = androidx.compose.ui.graphics.Color(0xFFFF7AB6)
+    val calendar = androidx.compose.ui.graphics.Color(0xFFFFB547)
+    fun gender(isMen: Boolean) = if (isMen) men else women
+}
+
 private val tfMonthDay = DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
 
 private fun dateRange(c: TfChampionship): String =
@@ -336,7 +344,7 @@ private fun TfContent() {
                 item(itemId = if (isMen) 3_000_000_004L else 3_000_000_006L) {
                     Column {
                         Spacer(modifier = GlanceModifier.height(4.dp))
-                        SectionLabel("2026 NCAA CHAMPIONS · $label")
+                        SectionLabel("2026 NCAA CHAMPIONS · $label", TfColors.gender(isMen))
                     }
                 }
                 items(group, itemId = { c -> 4_000_000_000L + (("${c.event}|${c.men}").hashCode().toLong() and 0x7fffffffL) }) { c ->
@@ -351,7 +359,7 @@ private fun TfContent() {
                 item(itemId = 3_000_000_005L) {
                     Column {
                         Spacer(modifier = GlanceModifier.height(4.dp))
-                        SectionLabel("2027 SEASON CALENDAR")
+                        SectionLabel("2027 SEASON CALENDAR", TfColors.calendar)
                     }
                 }
                 items(data.calendar, itemId = { c -> 5_000_000_000L + (c.name.hashCode().toLong() and 0x7fffffffL) }) { c ->
@@ -366,10 +374,10 @@ private fun TfContent() {
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+private fun SectionLabel(text: String, color: androidx.compose.ui.graphics.Color = Palette.muted) {
     Text(
         text = text,
-        style = style(Palette.muted, 13.sp, bold = true),
+        style = style(color, 14.sp, bold = true),
         modifier = GlanceModifier.padding(start = 4.dp, bottom = 4.dp),
     )
 }
@@ -399,7 +407,7 @@ private fun StandingsCard(title: String, rows: List<TfStanding>) {
         modifier = GlanceModifier.fillMaxWidth().background(Palette.card).cornerRadius(12.dp)
             .padding(horizontal = 10.dp, vertical = 8.dp).clickable(openTfPage()),
     ) {
-        Text(text = title.uppercase(Locale.getDefault()), style = style(Palette.accent, 13.sp, bold = true))
+        Text(text = title.uppercase(Locale.getDefault()), style = style(TfColors.gender(title == "Men"), 13.sp, bold = true))
         Spacer(modifier = GlanceModifier.height(4.dp))
         rows.forEach { r ->
             Row(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -424,7 +432,7 @@ private fun ChampionRow(c: TfChampion, narrow: Boolean) {
             .padding(horizontal = 10.dp, vertical = 7.dp).clickable(openTfPage()),
     ) {
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = label.uppercase(Locale.getDefault()), style = style(Palette.accent, 12.sp, bold = true),
+            Text(text = label.uppercase(Locale.getDefault()), style = style(TfColors.gender(c.men), 12.sp, bold = true),
                 maxLines = 1, modifier = GlanceModifier.defaultWeight())
             Text(text = c.mark, style = style(size = 16.sp, bold = true))
         }
@@ -443,7 +451,7 @@ private fun CalendarRow(c: TfCalendarItem, narrow: Boolean) {
     ) {
         Text(
             text = c.whenText.removeSuffix(" 2027").uppercase(Locale.getDefault()),
-            style = style(Palette.accent, 14.sp, bold = true), maxLines = 2,
+            style = style(TfColors.calendar, 14.sp, bold = true), maxLines = 2,
             modifier = GlanceModifier.width(if (narrow) 64.dp else 84.dp),
         )
         Column(modifier = GlanceModifier.defaultWeight()) {
