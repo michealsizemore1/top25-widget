@@ -103,8 +103,16 @@ class GameActivity : Activity() {
             } catch (e: Exception) {
                 null
             }
+            // The scoreboard feed carries the live situation (down, spot, timeouts,
+            // last play, players) that the summary feed leaves out for live games.
+            val sbLive = if (result == null) null else try {
+                EspnSource.fetch(league).firstOrNull { it.id == id }?.live
+            } catch (e: Exception) {
+                null
+            }
             runOnUiThread {
                 if (isFinishing || id != gameId) return@runOnUiThread
+                scoreboardLive = sbLive
                 if (result == null) {
                     if (!quiet) {
                         content.removeAllViews()
@@ -506,6 +514,7 @@ class GameActivity : Activity() {
     }
 
     private var currentLive: LiveInfo? = null
+    private var scoreboardLive: LiveInfo? = null
     private var liveAway: TeamLine? = null
     private var liveHome: TeamLine? = null
 
@@ -523,13 +532,27 @@ class GameActivity : Activity() {
         val away = teamLine(awayC).also { liveAway = it }
         val home = teamLine(homeC).also { liveHome = it }
 
-        // The summary keeps situation at the top level; LiveInfo reads it from the competition.
+        // Prefer the scoreboard's live situation; otherwise use whatever the summary has.
         val sit = j.optJSONObject("situation") ?: JSONObject()
         val compWithSit = JSONObject(comp.toString()).put("situation", sit)
-        val base = LiveInfo.from(compWithSit, awayC, homeC, away, home)
+        var base = scoreboardLive ?: LiveInfo.from(compWithSit, awayC, homeC, away, home)
 
-        // Fill gaps from the summary's own drive and win-probability feeds.
+        // Fill gaps from the summary's own drive, last play, and win-probability feeds.
         val current = j.optJSONObject("drives")?.optJSONObject("current")
+        val plays = current?.optJSONArray("plays")
+        val lastPlayObj = plays?.optJSONObject(plays.length() - 1)
+        if (lastPlayObj != null) {
+            val end = lastPlayObj.optJSONObject("end")
+            val possText = base.possessionText.ifBlank { end?.optString("possessionText").orEmpty() }
+            val ballX = base.ballX ?: LiveInfo.spotX(possText, away, home)
+            base = base.copy(
+                lastPlay = base.lastPlay.ifBlank { lastPlayObj.optString("text") },
+                downText = base.downText.ifBlank { end?.optString("shortDownDistanceText").orEmpty() },
+                possessionText = possText,
+                possessionId = base.possessionId.ifBlank { end?.optJSONObject("team")?.optString("id") ?: current.optJSONObject("team")?.optString("id").orEmpty() },
+                ballX = ballX,
+            )
+        }
         val drive = base.drive.ifBlank { current?.optString("description").orEmpty() }
         val startText = current?.optJSONObject("start")?.optString("text").orEmpty()
         val driveStartX = LiveInfo.spotX(startText, away, home)
