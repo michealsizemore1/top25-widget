@@ -156,7 +156,7 @@ private fun WidgetContent() {
 private fun EmptyMessage(updated: Long?) {
     Text(
         text = if (updated == null) "Loading scores…" else "No Top 25 games today",
-        style = style(Palette.muted, 13.sp),
+        style = style(Palette.muted, 15.sp),
         modifier = GlanceModifier.clickable(openSite()),
     )
 }
@@ -189,11 +189,11 @@ private fun Header(updated: Long?, refreshing: Boolean, error: String?, narrow: 
     ) {
         Text(
             text = if (narrow) "Scores" else "Top 25 Scores",
-            style = style(size = 15.sp, bold = true),
+            style = style(size = 17.sp, bold = true),
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight().clickable(openSite()),
         )
-        Text(text = status, style = style(Palette.muted, 11.sp), maxLines = 1)
+        Text(text = status, style = style(Palette.muted, 12.sp), maxLines = 1)
         RefreshButton(refreshing)
     }
 }
@@ -218,7 +218,7 @@ private fun GameCard(game: Game, narrow: Boolean, detailed: Boolean) {
         }
         if (detailed && game.network.isNotBlank()) {
             Spacer(modifier = GlanceModifier.height(4.dp))
-            Text(text = "TV: ${game.network}", style = style(Palette.dim, 11.sp))
+            Text(text = "TV: ${game.network}", style = style(Palette.dim, 13.sp))
         }
     }
 }
@@ -227,7 +227,7 @@ private fun GameCard(game: Game, narrow: Boolean, detailed: Boolean) {
 private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: Boolean) {
     val context = LocalContext.current
     val lost = game.isFinal && !team.winner
-    val nameSize = if (narrow) 13.sp else 15.sp
+    val nameSize = if (narrow) 15.sp else 17.sp
 
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (!narrow) {
@@ -236,15 +236,15 @@ private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: B
                 Image(
                     provider = ImageProvider(logo),
                     contentDescription = null,
-                    modifier = GlanceModifier.size(20.dp),
+                    modifier = GlanceModifier.size(24.dp),
                 )
             } else {
-                Spacer(modifier = GlanceModifier.size(20.dp))
+                Spacer(modifier = GlanceModifier.size(24.dp))
             }
             Spacer(modifier = GlanceModifier.width(6.dp))
         }
         team.rank?.let {
-            Text(text = "$it ", style = style(Palette.muted, 11.sp))
+            Text(text = "$it ", style = style(Palette.muted, 13.sp))
         }
         Text(
             text = if (narrow) team.abbr.ifBlank { team.name } else team.name,
@@ -257,10 +257,10 @@ private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: B
             modifier = GlanceModifier.defaultWeight(),
         )
         if (game.isUpcoming) {
-            if (!narrow) Text(text = team.record, style = style(Palette.muted, 12.sp))
+            if (!narrow) Text(text = team.record, style = style(Palette.muted, 14.sp))
         } else {
             if (detailed && team.record.isNotBlank()) {
-                Text(text = "${team.record}  ", style = style(Palette.dim, 11.sp))
+                Text(text = "${team.record}  ", style = style(Palette.dim, 13.sp))
             }
             Text(
                 text = team.score,
@@ -273,32 +273,32 @@ private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: B
 @Composable
 private fun Status(game: Game, narrow: Boolean) {
     Column(
-        modifier = GlanceModifier.width(if (narrow) 50.dp else 84.dp).padding(start = 8.dp),
+        modifier = GlanceModifier.width(if (narrow) 56.dp else 96.dp).padding(start = 8.dp),
         horizontalAlignment = Alignment.End,
     ) {
         when {
             game.isLive -> {
                 Text(
                     text = game.detail.ifBlank { "Live" },
-                    style = style(Palette.accent, if (narrow) 11.sp else 13.sp, bold = true, align = TextAlign.End),
+                    style = style(Palette.accent, if (narrow) 12.sp else 15.sp, bold = true, align = TextAlign.End),
                     maxLines = 2,
                 )
-                if (!narrow) Text(text = "LIVE", style = style(Palette.accent, 10.sp, align = TextAlign.End))
+                if (!narrow) Text(text = "LIVE", style = style(Palette.accent, 12.sp, align = TextAlign.End))
             }
             game.isFinal -> Text(
                 text = game.detail.ifBlank { "Final" },
-                style = style(Palette.muted, if (narrow) 11.sp else 13.sp, bold = true, align = TextAlign.End),
+                style = style(Palette.muted, if (narrow) 12.sp else 15.sp, bold = true, align = TextAlign.End),
                 maxLines = 1,
             )
             else -> {
                 Text(
                     text = formatTime(game.startMillis),
-                    style = style(size = if (narrow) 11.sp else 14.sp, bold = true, align = TextAlign.End),
+                    style = style(size = if (narrow) 12.sp else 16.sp, bold = true, align = TextAlign.End),
                     maxLines = 1,
                 )
                 Text(
                     text = formatDay(game.startMillis, narrow),
-                    style = style(Palette.muted, 11.sp, align = TextAlign.End),
+                    style = style(Palette.muted, 13.sp, align = TextAlign.End),
                     maxLines = 1,
                 )
             }
