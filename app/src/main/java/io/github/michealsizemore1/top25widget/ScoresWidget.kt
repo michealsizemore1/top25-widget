@@ -88,6 +88,9 @@ class NflScoresWidget : LeagueScoresWidget(League.NFL)
 /** WNBA widget. */
 class WnbaScoresWidget : LeagueScoresWidget(League.WNBA)
 
+/** NHL widget. */
+class NhlScoresWidget : LeagueScoresWidget(League.NHL)
+
 abstract class LeagueScoresWidget(val league: League) : GlanceAppWidget() {
 
     companion object {

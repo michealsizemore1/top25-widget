@@ -207,12 +207,19 @@ class GameActivity : Activity() {
         val h = home.optJSONArray("linescores") ?: return
         if (a.length() == 0) return
         val periods = maxOf(a.length(), h.length())
-        val box = section("Score by quarter")
+        val box = section(if (league == League.NHL) "Score by period" else "Score by quarter")
+        val reg = league.regulationPeriods
 
         fun line(name: String, arr: JSONArray?, total: String, header: Boolean) = row().apply {
             addView(cell(name, 1.6f, if (header) C.muted else C.text, Gravity.START, bold = !header))
             for (p in 0 until periods) {
-                val v = if (header) (if (p < 4) "${p + 1}" else if (p == 4) "OT" else "${p - 3}OT")
+                val v = if (header) when {
+                    p < reg -> "${p + 1}"
+                    league == League.NHL && p == reg -> "OT"
+                    league == League.NHL -> "SO"
+                    p == reg -> "OT"
+                    else -> "${p - reg + 1}OT"
+                }
                 else arr?.optJSONObject(p)?.optString("displayValue", "-") ?: "-"
                 addView(cell(v, 1f, if (header) C.muted else C.text, Gravity.CENTER))
             }

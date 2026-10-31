@@ -39,6 +39,7 @@ fun widgetFor(league: League): LeagueScoresWidget = when (league) {
     League.CFB -> ScoresWidget()
     League.NFL -> NflScoresWidget()
     League.WNBA -> WnbaScoresWidget()
+    League.NHL -> NhlScoresWidget()
 }
 
 /**
@@ -183,3 +184,5 @@ class ScoresWidgetReceiver : LeagueWidgetReceiver(League.CFB)
 class NflScoresWidgetReceiver : LeagueWidgetReceiver(League.NFL)
 
 class WnbaScoresWidgetReceiver : LeagueWidgetReceiver(League.WNBA)
+
+class NhlScoresWidgetReceiver : LeagueWidgetReceiver(League.NHL)
