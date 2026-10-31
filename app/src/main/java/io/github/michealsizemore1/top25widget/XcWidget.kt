@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -226,6 +227,7 @@ private fun XcContent() {
     val error = prefs[Keys.ERROR]
     val today = LocalDate.now()
     val next = XcFeed.nextMeet(data.meets, today)
+    val upcoming = data.meets.filter { it != next && it.start.isAfter(today) }.sortedBy { it.start }
 
     val size = LocalSize.current
     val narrow = size.width < 200.dp
@@ -290,6 +292,22 @@ private fun XcContent() {
                     }
                 }
             }
+            if (upcoming.isNotEmpty()) {
+                item(itemId = 1_000_000_003L) {
+                    Text(
+                        text = "UPCOMING MEETS",
+                        style = style(Palette.muted, 13.sp, bold = true),
+                        modifier = GlanceModifier.padding(start = 4.dp, bottom = 4.dp),
+                    )
+                }
+                items(upcoming, itemId = { m -> 2_000_000_000L + m.start.toEpochDay() * 10 + (m.name.hashCode() and 7) }) { m ->
+                    Column(modifier = GlanceModifier.fillMaxWidth()) {
+                        UpcomingMeetRow(m, today, narrow)
+                        Spacer(modifier = GlanceModifier.height(6.dp))
+                    }
+                }
+                item(itemId = 1_000_000_004L) { Spacer(modifier = GlanceModifier.height(4.dp)) }
+            }
             if (data.results.isNotEmpty()) {
                 item(itemId = 1_000_000_002L) {
                     Text(
@@ -331,6 +349,35 @@ private fun MeetCard(m: XcMeet, today: LocalDate, narrow: Boolean) {
         if (!narrow) {
             Text(text = m.where, style = style(Palette.muted, 14.sp), maxLines = 1)
             if (m.watch.isNotBlank()) Text(text = "Watch: ${m.watch}", style = style(Palette.dim, 13.sp), maxLines = 2)
+        }
+    }
+}
+
+@Composable
+private fun UpcomingMeetRow(m: XcMeet, today: LocalDate, narrow: Boolean) {
+    val days = ChronoUnit.DAYS.between(today, m.start)
+    val countdown = when (days) {
+        1L -> "Tomorrow"
+        in 2L..13L -> "in $days days"
+        else -> "in ${days / 7} weeks"
+    }
+    Row(
+        modifier = GlanceModifier.fillMaxWidth().background(Palette.card).cornerRadius(12.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .clickable(openUrl(XcConfig.PAGE_URL)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = GlanceModifier.width(if (narrow) 58.dp else 72.dp)) {
+            Text(text = m.start.format(shortDate).uppercase(Locale.getDefault()),
+                style = style(Palette.accent, 15.sp, bold = true), maxLines = 1)
+            Text(text = countdown, style = style(Palette.muted, 12.sp), maxLines = 1)
+        }
+        Column(modifier = GlanceModifier.defaultWeight()) {
+            Text(text = m.name, style = style(size = if (narrow) 15.sp else 17.sp, bold = true), maxLines = 2)
+            if (!narrow) {
+                Text(text = m.where, style = style(Palette.muted, 14.sp), maxLines = 1)
+                if (m.watch.isNotBlank()) Text(text = "Watch: ${m.watch}", style = style(Palette.dim, 13.sp), maxLines = 1)
+            }
         }
     }
 }
