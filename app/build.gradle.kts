@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.8"
     }
 
     // One fixed key so every new build can install as an update over the last one.

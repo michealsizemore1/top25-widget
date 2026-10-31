@@ -294,7 +294,7 @@ private fun XcContent() {
                 item(itemId = 1_000_000_002L) {
                     Text(
                         text = "LATEST RESULTS",
-                        style = style(Palette.muted, 12.sp, bold = true),
+                        style = style(Palette.muted, 13.sp, bold = true),
                         modifier = GlanceModifier.padding(start = 4.dp, bottom = 4.dp),
                     )
                 }
@@ -321,16 +321,16 @@ private fun MeetCard(m: XcMeet, today: LocalDate, narrow: Boolean) {
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = if (live) "MEET DAY" else "NEXT MEET",
-                style = style(Palette.accent, 11.sp, bold = true),
+                style = style(Palette.accent, 13.sp, bold = true),
                 modifier = GlanceModifier.defaultWeight(),
             )
-            Text(text = whenText, style = style(if (live) Palette.accent else Palette.text, 14.sp, bold = true))
+            Text(text = whenText, style = style(if (live) Palette.accent else Palette.text, 16.sp, bold = true))
         }
         Spacer(modifier = GlanceModifier.height(3.dp))
         Text(text = m.name, style = style(size = if (narrow) 15.sp else 17.sp, bold = true), maxLines = 2)
         if (!narrow) {
-            Text(text = m.where, style = style(Palette.muted, 13.sp), maxLines = 1)
-            if (m.watch.isNotBlank()) Text(text = "Watch: ${m.watch}", style = style(Palette.dim, 12.sp), maxLines = 2)
+            Text(text = m.where, style = style(Palette.muted, 14.sp), maxLines = 1)
+            if (m.watch.isNotBlank()) Text(text = "Watch: ${m.watch}", style = style(Palette.dim, 13.sp), maxLines = 2)
         }
     }
 }
@@ -342,12 +342,12 @@ private fun ResultCard(r: XcResult, today: LocalDate, narrow: Boolean, lines: In
             .padding(horizontal = 10.dp, vertical = 7.dp)
             .clickable(openUrl(r.url)),
     ) {
-        Text(text = r.headline, style = style(size = if (narrow) 14.sp else 15.sp), maxLines = lines)
+        Text(text = r.headline, style = style(size = if (narrow) 15.sp else 17.sp), maxLines = lines)
         Spacer(modifier = GlanceModifier.height(3.dp))
         Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Text(text = resultDate(r.date, today), style = style(Palette.accent, 12.sp, bold = true))
+            Text(text = resultDate(r.date, today), style = style(Palette.accent, 13.sp, bold = true))
             Spacer(modifier = GlanceModifier.width(8.dp))
-            Text(text = r.source, style = style(Palette.dim, 12.sp), maxLines = 1,
+            Text(text = r.source, style = style(Palette.muted, 13.sp), maxLines = 1,
                 modifier = GlanceModifier.defaultWeight())
         }
     }
