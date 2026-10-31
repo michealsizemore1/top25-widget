@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Top 25 Scores</string>
+    <string name="widget_name">Top 25 Scores</string>
+    <string name="widget_description">Live college football scores for Top 25 games</string>
+</resources>
