@@ -58,7 +58,7 @@ import java.util.Locale
 private val LocalLeague = staticCompositionLocalOf { League.CFB }
 
 /** Colors matched to the Top 25 site. */
-private object Palette {
+internal object Palette {
     val bg = Color(0xFF121A17)
     val card = Color(0xFF0D0D0D)
     val text = Color(0xFFFFFFFF)
@@ -67,7 +67,7 @@ private object Palette {
     val accent = Color(0xFFD4E635)
 }
 
-private fun style(
+internal fun style(
     color: Color = Palette.text,
     size: TextUnit = 14.sp,
     bold: Boolean = false,
@@ -342,7 +342,7 @@ private val timeFmt = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
 private val dayFmt = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
 private val shortDayFmt = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
 
-private fun formatTime(millis: Long): String =
+internal fun formatTime(millis: Long): String =
     Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(timeFmt)
 
 private fun formatDay(millis: Long, short: Boolean): String {

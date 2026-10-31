@@ -2,6 +2,8 @@
     <string name="app_name">Sports Scores</string>
     <string name="wnba_widget_name">WNBA Scores</string>
     <string name="nhl_widget_name">NHL Scores</string>
+    <string name="xc_widget_name">XC Meets</string>
+    <string name="xc_widget_description">College cross country meet results and the next meet</string>
     <string name="nhl_widget_description">Live NHL scores for today\'s games</string>
     <string name="wnba_widget_description">Live WNBA scores for today\'s games</string>
     <string name="nfl_widget_name">NFL Scores</string>

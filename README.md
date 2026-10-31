@@ -1,6 +1,6 @@
 # Sports Scores — Android home screen widgets
 
-Four resizable widgets in one app: **Top 25 Scores** (college football games involving ranked teams), **NFL Scores** (this week's NFL games), **WNBA Scores** (today's WNBA games), and **NHL Scores** (today's NHL games). All have live scores and a tap-for-details game screen.
+Five resizable widgets in one app: **Top 25 Scores** (college football games involving ranked teams), **NFL Scores** (this week's NFL games), **WNBA Scores** (today's WNBA games), **NHL Scores** (today's NHL games), and **XC Meets** (college cross country results and the next meet). The score widgets have live scores and a tap-for-details game screen; XC Meets opens each result's story.
 
 ## What it does
 
@@ -17,7 +17,7 @@ Four resizable widgets in one app: **Top 25 Scores** (college football games inv
 - **Order:** live games, then upcoming games by kickoff, then finals.
 - **Tap a game** for details: score by quarter, live down & distance, scoring plays, team stats, leaders, and game info. It refreshes every 30 seconds while the game is live.
 
-Scores come from ESPN's public scoreboards. The college feed, without a filter, returns games involving ranked teams; the NFL feed returns the current week; the WNBA and NHL feeds return today's games.
+Scores come from ESPN's public scoreboards. The college feed, without a filter, returns games involving ranked teams; the NFL feed returns the current week; the WNBA and NHL feeds return today's games. XC Meets reads `data/xc-meets.json` from the Master App, which a GitHub job there refreshes every 3 hours.
 
 ## Install it, no computer needed
 

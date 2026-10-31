@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
 /** Change these to point the widget somewhere else. */
 object Config {
     /** Opened when you tap a game in the widget. */
-    const val SITE_URL = ""  // set to your Top 25 site's full address to show "Open site" links
+    const val SITE_URL = "https://michealsizemore1.github.io/ChatGPT-The-Master-App/"
 
 
     /** How often to refresh while a game is live (minutes). Normal refresh is every 15. */
@@ -40,6 +40,14 @@ enum class League(
 
     /** Hockey has 3 periods; the other leagues have 4 quarters. */
     val regulationPeriods get() = if (this == NHL) 3 else 4
+
+    /** This league's page in your Master App. */
+    val siteUrl get() = Config.SITE_URL + when (this) {
+        CFB -> "top-25.html"
+        NFL -> "nfl-gameday.html"
+        WNBA -> "the-w.html"
+        NHL -> "nhl-faceoff.html"
+    }
 
     /** Pro leagues show team nicknames ("Chiefs", "Liberty"); college shows schools. */
     val usesNicknames get() = this != CFB

@@ -147,8 +147,8 @@ class GameActivity : Activity() {
             startActivity(Intent(Intent.ACTION_VIEW,
                 Uri.parse(league.espnGameUrl(gameId))))
         })
-        if (Config.SITE_URL.isNotBlank()) content.addView(button("Open Top 25 site") {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)))
+        content.addView(button("Open ${league.shortTitle} app") {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(league.siteUrl)))
         })
     }
 
