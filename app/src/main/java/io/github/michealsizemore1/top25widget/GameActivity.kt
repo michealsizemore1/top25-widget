@@ -135,9 +135,14 @@ class GameActivity : Activity() {
             .firstOrNull { it.optString("homeAway") == "home" } ?: JSONObject()
 
         currentLive = if (state == "in") liveInfo(j) else null
-        renderScoreHeader(away, home, state, type)
-        renderLinescore(away, home)
-        renderSituation(j, state)
+        val live = currentLive
+        if (live != null) {
+            // One combined card, matching the Top 25 site's live game view.
+            renderLiveCard(live, away, home, type)
+        } else {
+            renderScoreHeader(away, home, state, type)
+            renderLinescore(away, home)
+        }
         renderScoringPlays(j)
         renderTeamStats(j, away, home)
         renderLeaders(j)
@@ -305,6 +310,201 @@ class GameActivity : Activity() {
         }
     }
 
+    // ------------------------------------------------------------------ live game card
+
+    private val serifBold: Typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+    private val headshots = HashMap<String, android.graphics.Bitmap>()
+
+    private fun renderLiveCard(live: LiveInfo, away: JSONObject, home: JSONObject, type: JSONObject) {
+        val box = card()
+        content.addView(box)
+
+        // LIVE DRIVE · drive summary
+        box.addView(row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("LIVE DRIVE", C.accent, 13f, bold = true).apply {
+                letterSpacing = 0.12f
+                layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+            })
+            if (live.drive.isNotBlank()) addView(label(live.drive, C.muted, 13f))
+        })
+
+        // Logos, scores, and the clock in the middle
+        val awayHas = live.possessionId.isNotBlank() && live.possessionId == away.optJSONObject("team")?.optString("id")
+        val homeHas = live.possessionId.isNotBlank() && live.possessionId == home.optJSONObject("team")?.optString("id")
+        box.addView(row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(14), 0, dp(10))
+            addView(liveTeamColumn(away, live.awayTimeouts))
+            addView(label(if (awayHas) "🏈" else "", C.text, 18f).apply { setPadding(dp(4), 0, dp(4), 0) })
+            addView(label(away.optString("score", "0"), C.text, 42f).apply { typeface = serifBold })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                addView(label(type.optString("shortDetail"), C.text, 19f).apply { typeface = serifBold; gravity = Gravity.CENTER })
+                if (live.downText.isNotBlank()) addView(label(live.downText, C.text, 15f, bold = true).apply { gravity = Gravity.CENTER })
+                if (live.possessionText.isNotBlank()) addView(label("ON THE ${live.possessionText.uppercase()}", C.muted, 12f).apply {
+                    letterSpacing = 0.08f; gravity = Gravity.CENTER
+                })
+            })
+            addView(label(home.optString("score", "0"), C.text, 42f).apply { typeface = serifBold })
+            addView(label(if (homeHas) "🏈" else "", C.text, 18f).apply { setPadding(dp(4), 0, dp(4), 0) })
+            addView(liveTeamColumn(home, live.homeTimeouts))
+        })
+
+        // Field with the drive trail
+        if (live.ballX != null) {
+            box.addView(ImageView(this).apply {
+                setImageBitmap(fieldBitmap(live, liveAway?.abbr.orEmpty(), liveHome?.abbr.orEmpty(), scale = 2.5f, bg = C.card))
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) }
+            })
+        }
+
+        // Score by quarter in a bordered table
+        val periods = maxOf(live.awayLines.size, live.homeLines.size)
+        if (periods > 0) {
+            val table = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(C.card); setStroke(dp(1), C.line); cornerRadius = dp(10).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) }
+            }
+            fun ordinal(p: Int) = when (p) { 0 -> "1ST"; 1 -> "2ND"; 2 -> "3RD"; 3 -> "4TH"; 4 -> "OT"; else -> "${p - 3}OT" }
+            fun tableRow(name: String, cells: List<String>, total: String, header: Boolean) = row().apply {
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                if (header) setBackgroundColor(Color.parseColor("#141414"))
+                addView(label(name, C.text, 17f, bold = true).apply { layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.3f) })
+                cells.forEach { v ->
+                    addView(label(v, if (header) C.muted else C.text, if (header) 13f else 17f).apply {
+                        if (header) letterSpacing = 0.1f
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                    })
+                }
+                addView(label(total, if (header) C.muted else C.accent, if (header) 13f else 17f, bold = !header).apply {
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 0.8f)
+                })
+            }
+            table.addView(tableRow("", (0 until periods).map(::ordinal), "T", header = true))
+            table.addView(divider().apply { (layoutParams as LinearLayout.LayoutParams).setMargins(0, 0, 0, 0) })
+            table.addView(tableRow(liveAway?.abbr.orEmpty(), (0 until periods).map { live.awayLines.getOrElse(it) { "-" } }, away.optString("score"), header = false))
+            table.addView(divider().apply { (layoutParams as LinearLayout.LayoutParams).setMargins(0, 0, 0, 0) })
+            table.addView(tableRow(liveHome?.abbr.orEmpty(), (0 until periods).map { live.homeLines.getOrElse(it) { "-" } }, home.optString("score"), header = false))
+            box.addView(table)
+        }
+
+        // "2nd & 4 at MINN 31" and the last play
+        val spot = live.possessionText.takeIf { it.isNotBlank() }?.let { " at ${it.uppercase()}" }.orEmpty()
+        if (live.downText.isNotBlank()) {
+            box.addView(label(live.downText + spot, C.text, 26f).apply { typeface = serifBold; setPadding(0, dp(18), 0, dp(6)) })
+        }
+        if (live.lastPlay.isNotBlank()) box.addView(label(live.lastPlay, C.text, 17f))
+
+        // Player chips
+        if (live.athletes.isNotEmpty()) {
+            box.addView(android.widget.HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) }
+                addView(row().apply {
+                    layoutParams = android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+                    live.athletes.forEach { a -> addView(playerChip(a)) }
+                })
+            })
+        }
+
+        // Win probability
+        live.homeWinPct?.let { hwp ->
+            box.addView(ImageView(this).apply {
+                setImageBitmap(winProbBitmap(live, scale = 2.5f, bg = C.card))
+                scaleType = ImageView.ScaleType.FIT_XY
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(10)).apply { topMargin = dp(18) }
+            })
+            box.addView(row().apply {
+                setPadding(0, dp(8), 0, 0)
+                fun pctText(v: Double) = String.format(java.util.Locale.US, "%.1f%%", v * 100)
+                addView(label("${liveAway?.abbr.orEmpty()} ${pctText(1 - hwp)}", C.text, 14f, bold = true).apply { letterSpacing = 0.06f })
+                addView(label("WIN PROBABILITY", C.muted, 12f).apply {
+                    letterSpacing = 0.1f; gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                })
+                addView(label("${liveHome?.abbr.orEmpty()} ${pctText(hwp)}", C.text, 14f, bold = true).apply { letterSpacing = 0.06f })
+            })
+        }
+    }
+
+    /** Logo, timeout dots, and "#4 7-1" under it. */
+    private fun liveTeamColumn(c: JSONObject, timeouts: Int): View {
+        val team = c.optJSONObject("team") ?: JSONObject()
+        val rank = c.optInt("rank", 99).takeIf { it in 1..25 }
+            ?: c.optJSONObject("curatedRank")?.optInt("current", 99)?.takeIf { it in 1..25 }
+        val record = c.optJSONArray("record")?.optJSONObject(0)?.optString("summary")
+            ?: c.optJSONArray("records")?.optJSONObject(0)?.optString("summary").orEmpty()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(dp(64), WRAP_CONTENT)
+            addView(ImageView(context).apply {
+                Logos.bitmap(this@GameActivity, league.logoKey(team.optString("id")))?.let { setImageBitmap(it) }
+                layoutParams = LinearLayout.LayoutParams(dp(52), dp(52))
+            })
+            if (timeouts >= 0) addView(row().apply {
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(4) }
+                addView(label("●".repeat(timeouts.coerceIn(0, 3)), Color.parseColor("#F5D33A"), 13f))
+                addView(label("●".repeat((3 - timeouts).coerceIn(0, 3)), Color.parseColor("#3A3F3D"), 13f))
+            })
+            val sub = listOfNotNull(rank?.let { "#$it" }, record.takeIf { it.isNotBlank() }).joinToString(" ")
+            if (sub.isNotBlank()) addView(label(sub, C.muted, 13f, bold = true).apply { gravity = Gravity.CENTER })
+        }
+    }
+
+    /** Rounded chip: circular headshot, name, "QB · #5". */
+    private fun playerChip(a: LiveAthlete): View = row().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8), dp(8), dp(18), dp(8))
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.parseColor("#1A1A1A")); cornerRadius = dp(28).toFloat()
+        }
+        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(10) }
+        val photo = ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { rightMargin = dp(10) }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.parseColor("#2A2A2A"))
+            }
+            clipToOutline = true
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        addView(photo)
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(label(a.name, C.text, 16f, bold = true))
+            val sub = listOf(a.position, a.jersey.takeIf { it.isNotBlank() }?.let { "#$it" }.orEmpty())
+                .filter { it.isNotBlank() }.joinToString(" · ")
+            if (sub.isNotBlank()) addView(label(sub, C.muted, 13f))
+        })
+        loadHeadshot(a.headshot, photo)
+    }
+
+    private fun loadHeadshot(url: String, into: ImageView) {
+        if (url.isBlank()) return
+        headshots[url]?.let { into.setImageBitmap(it); return }
+        Thread {
+            val bmp = try {
+                val bytes = Http.get(url)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    ?.let { android.graphics.Bitmap.createScaledBitmap(it, 160, (160f * it.height / it.width).toInt().coerceAtLeast(1), true) }
+            } catch (e: Exception) {
+                null
+            } ?: return@Thread
+            runOnUiThread { headshots[url] = bmp; into.setImageBitmap(bmp) }
+        }.start()
+    }
+
     private var currentLive: LiveInfo? = null
     private var liveAway: TeamLine? = null
     private var liveHome: TeamLine? = null
@@ -329,11 +529,14 @@ class GameActivity : Activity() {
         val base = LiveInfo.from(compWithSit, awayC, homeC, away, home)
 
         // Fill gaps from the summary's own drive and win-probability feeds.
-        val drive = base.drive.ifBlank { j.optJSONObject("drives")?.optJSONObject("current")?.optString("description").orEmpty() }
+        val current = j.optJSONObject("drives")?.optJSONObject("current")
+        val drive = base.drive.ifBlank { current?.optString("description").orEmpty() }
+        val startText = current?.optJSONObject("start")?.optString("text").orEmpty()
+        val driveStartX = LiveInfo.spotX(startText, away, home)
         val wp = j.optJSONArray("winprobability")
         val hwp = base.homeWinPct ?: wp?.optJSONObject(wp.length() - 1)?.optDouble("homeWinPercentage")?.takeIf { !it.isNaN() }
         if (base.downText.isBlank() && base.lastPlay.isBlank() && hwp == null) return null
-        return base.copy(drive = drive, homeWinPct = hwp)
+        return base.copy(drive = drive, homeWinPct = hwp, driveStartX = driveStartX)
     }
 
     private fun renderScoringPlays(j: JSONObject) {

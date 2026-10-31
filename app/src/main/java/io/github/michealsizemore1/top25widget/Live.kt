@@ -31,6 +31,9 @@ import java.util.Locale
  * possession, down & distance, ball spot, timeouts, score by quarter, last play,
  * and win probability. Comes from the scoreboard's `situation` block.
  */
+/** A player in the last play, shown as a chip with their photo. */
+data class LiveAthlete(val name: String, val position: String, val jersey: String, val headshot: String)
+
 data class LiveInfo(
     val possessionId: String,
     val possessionText: String,   // "STAN 25"
@@ -48,6 +51,8 @@ data class LiveInfo(
     val homeColor: Int,
     val awayLines: List<String>,
     val homeLines: List<String>,
+    val athletes: List<LiveAthlete> = emptyList(),
+    val driveStartX: Int? = null,   // where the current drive began, same scale as ballX
 ) {
     companion object {
         private val DEFAULT_AWAY = 0xFF8A1C1C.toInt()
@@ -109,6 +114,17 @@ data class LiveInfo(
                     it.optString("jersey").takeIf { j -> j.isNotBlank() }?.let { j -> "#$j" }.orEmpty(),
                 ).filter { s -> s.isNotBlank() }.joinToString(" · ")
             }.orEmpty()
+            val athletes = last?.optJSONArray("athletesInvolved")?.let { a ->
+                (0 until minOf(2, a.length())).mapNotNull { i ->
+                    val o = a.optJSONObject(i) ?: return@mapNotNull null
+                    LiveAthlete(
+                        name = o.optString("displayName").ifBlank { o.optString("shortName") },
+                        position = o.optJSONObject("position")?.optString("abbreviation").orEmpty(),
+                        jersey = o.optString("jersey"),
+                        headshot = o.optJSONObject("headshot")?.optString("href") ?: o.optString("headshot"),
+                    ).takeIf { it.name.isNotBlank() }
+                }
+            }.orEmpty()
             val prob = last?.optJSONObject("probability")?.optDouble("homeWinPercentage")?.takeIf { !it.isNaN() }
 
             return LiveInfo(
@@ -128,7 +144,20 @@ data class LiveInfo(
                 homeColor = color(homeC.optJSONObject("team")?.optString("color"), DEFAULT_HOME),
                 awayLines = lines(awayC),
                 homeLines = lines(homeC),
+                athletes = athletes,
             )
+        }
+
+        /** "MINN 9" -> yards from the away goal line (left), or null. */
+        fun spotX(text: String, away: TeamLine, home: TeamLine): Int? {
+            if (text.trim() == "50") return 50
+            val m = Regex("^(\\S+)\\s+(\\d{1,2})$").find(text.trim()) ?: return null
+            val yd = m.groupValues[2].toInt()
+            return when {
+                m.groupValues[1].equals(away.abbr, true) -> yd
+                m.groupValues[1].equals(home.abbr, true) -> 100 - yd
+                else -> null
+            }
         }
 
         fun toJson(l: LiveInfo) = JSONObject().apply {
@@ -214,6 +243,15 @@ fun fieldBitmap(l: LiveInfo, awayAbbr: String, homeAbbr: String, scale: Float = 
     }
     endZoneText(awayAbbr, ez / 2)
     endZoneText(homeAbbr, w - ez / 2)
+
+    // Drive trail from where the drive started to the ball.
+    val start = l.driveStartX
+    if (start != null && l.ballX != null && start != l.ballX) {
+        val trail = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF6B7370.toInt(); strokeWidth = 6f; strokeCap = Paint.Cap.ROUND
+        }
+        c.drawLine(xOf(start), h / 2, xOf(l.ballX), h / 2, trail)
+    }
 
     // First-down line, then the ball.
     l.firstDownX?.let { fd ->
