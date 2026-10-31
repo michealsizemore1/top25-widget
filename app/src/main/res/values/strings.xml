@@ -3,6 +3,8 @@
     <string name="wnba_widget_name">WNBA Scores</string>
     <string name="nhl_widget_name">NHL Scores</string>
     <string name="xc_widget_name">XC Meets</string>
+    <string name="tf_widget_name">Track &amp; Field</string>
+    <string name="tf_widget_description">NCAA track and field standings, champions, and the 2027 calendar</string>
     <string name="xc_widget_description">College cross country meet results and the next meet</string>
     <string name="nhl_widget_description">Live NHL scores for today\'s games</string>
     <string name="wnba_widget_description">Live WNBA scores for today\'s games</string>

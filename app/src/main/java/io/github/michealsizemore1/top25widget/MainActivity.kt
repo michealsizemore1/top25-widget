@@ -35,7 +35,7 @@ class MainActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Add a Top 25, NFL, WNBA, NHL, or XC Meets widget, then long-press it and drag the edges to resize. Tap a game for details. " +
+            text = "Add a Top 25, NFL, WNBA, NHL, XC Meets, or Track & Field widget, then long-press it and drag the edges to resize. Tap a game for details. " +
                 "It refreshes every 15 minutes, every ${Config.LIVE_REFRESH_MINUTES} minutes " +
                 "during live games, and whenever you tap ⟳."
             textSize = 15f
@@ -64,9 +64,11 @@ class MainActivity : Activity() {
         button("Add WNBA widget") { pin(WnbaScoresWidgetReceiver::class.java, "WNBA Scores") }
         button("Add NHL widget") { pin(NhlScoresWidgetReceiver::class.java, "NHL Scores") }
         button("Add XC Meets widget") { pin(XcWidgetReceiver::class.java, "XC Meets") }
+        button("Add Track & Field widget") { pin(TfWidgetReceiver::class.java, "Track & Field") }
         button("Refresh scores now") {
             League.entries.forEach { Scheduler.refreshNow(this, it) }
             XcScheduler.refreshNow(this)
+            TfScheduler.refreshNow(this)
             Toast.makeText(this, "Refreshing…", Toast.LENGTH_SHORT).show()
         }
         button("Open Master App") {

@@ -1,6 +1,6 @@
 # Sports Scores — Android home screen widgets
 
-Five resizable widgets in one app: **Top 25 Scores** (college football games involving ranked teams), **NFL Scores** (this week's NFL games), **WNBA Scores** (today's WNBA games), **NHL Scores** (today's NHL games), and **XC Meets** (college cross country results and the next meet). The score widgets have live scores and a tap-for-details game screen; XC Meets opens each result's story.
+Six resizable widgets in one app: **Top 25 Scores** (college football games involving ranked teams), **NFL Scores** (this week's NFL games), **WNBA Scores** (today's WNBA games), **NHL Scores** (today's NHL games), **XC Meets** (college cross country results and the next meet), and **Track & Field** (NCAA standings, champions, and calendar, exported from the Master App's NCAA Track & Field page). The score widgets have live scores and a tap-for-details game screen; XC Meets opens each result's story.
 
 ## What it does
 
