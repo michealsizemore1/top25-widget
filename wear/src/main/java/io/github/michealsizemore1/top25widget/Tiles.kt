@@ -63,10 +63,11 @@ object TileUi {
             .addContent(content).build()
 
     /** Opens the watch app, on a game when [gameId] is given. */
-    fun open(ctx: Context, gameId: String?, clickId: String): ModifiersBuilders.Clickable {
+    fun open(ctx: Context, gameId: String?, clickId: String, mode: String = League.CFB.key): ModifiersBuilders.Clickable {
         val activity = ActionBuilders.AndroidActivity.Builder()
             .setPackageName(ctx.packageName)
             .setClassName(WatchActivity::class.java.name)
+            .addKeyToExtraMapping(WatchActivity.EXTRA_MODE, ActionBuilders.AndroidStringExtra.Builder().setValue(mode).build())
         if (gameId != null) activity.addKeyToExtraMapping(
             WatchActivity.EXTRA_GAME, ActionBuilders.AndroidStringExtra.Builder().setValue(gameId).build(),
         )
@@ -141,17 +142,24 @@ abstract class CoroutineTileService : TileService() {
 
 // ====================================================================== Top 25 tile
 
-class Top25TileService : CoroutineTileService() {
+class Top25TileService : LeagueTileService(League.CFB)
+class NflTileService : LeagueTileService(League.NFL)
+class WnbaTileService : LeagueTileService(League.WNBA)
+class NhlTileService : LeagueTileService(League.NHL)
+
+abstract class LeagueTileService(private val league: League) : CoroutineTileService() {
+    private val title get() = league.shortTitle.uppercase()
+
     override suspend fun buildTile(): TileBuilders.Tile {
-        val games = try { WatchFeed.games() } catch (e: Exception) {
-            return TileUi.tile(TileUi.message("TOP 25", "Can't reach scores right now"), IDLE_REFRESH_MS)
+        val games = try { WatchFeed.games(league) } catch (e: Exception) {
+            return TileUi.tile(TileUi.message(title, "Can't reach scores right now"), IDLE_REFRESH_MS)
         }
-        if (games.isEmpty()) return TileUi.tile(TileUi.message("TOP 25", "No Top 25 games today"), 60 * 60_000L)
+        if (games.isEmpty()) return TileUi.tile(TileUi.message(title, league.emptyMessage), 60 * 60_000L)
 
         val shown = games.take(3)
         val col = Column.Builder().setWidth(expand())
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .addContent(TileUi.text("TOP 25", 12f, TileUi.ACCENT, bold = true))
+            .addContent(TileUi.text(title, 12f, TileUi.ACCENT, bold = true))
             .addContent(TileUi.spacer(4f))
         shown.forEachIndexed { i, g ->
             col.addContent(gameRow(g, i))
@@ -159,7 +167,7 @@ class Top25TileService : CoroutineTileService() {
         }
         val more = games.size - shown.size
         col.addContent(Box.Builder().setWidth(wrap()).setHeight(wrap())
-            .setModifiers(ModifiersBuilders.Modifiers.Builder().setClickable(TileUi.open(this, null, "all")).build())
+            .setModifiers(ModifiersBuilders.Modifiers.Builder().setClickable(TileUi.open(this, null, "all", league.key)).build())
             .addContent(TileUi.text(if (more > 0) "+$more more games" else "All games", 11f, TileUi.MUTED))
             .build())
 
@@ -186,7 +194,7 @@ class Top25TileService : CoroutineTileService() {
             .addContent(TileUi.cell(54f, TileUi.text(WatchFeed.status(g), 11f, statusColor, bold = g.isLive, maxLines = 2,
                 align = LayoutElementBuilders.TEXT_ALIGN_END), alignEnd = true))
             .build()
-        return TileUi.card(row, TileUi.open(this, g.id, "game$i"))
+        return TileUi.card(row, TileUi.open(this, g.id, "game$i", league.key))
     }
 }
 

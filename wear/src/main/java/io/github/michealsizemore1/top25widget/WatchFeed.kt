@@ -16,14 +16,14 @@ object WatchFeed {
     private const val OSU_TEAM_URL =
         "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/$OSU_ID"
 
-    @Volatile private var cached: Pair<Long, List<Game>>? = null
+    private val cached = java.util.concurrent.ConcurrentHashMap<League, Pair<Long, List<Game>>>()
     @Volatile private var nextCached: Pair<Long, String>? = null
 
-    /** Today's Top 25 games, live first. Reuses a download up to [maxAgeMs] old. */
-    fun games(maxAgeMs: Long = 60_000): List<Game> {
-        cached?.let { (at, list) -> if (System.currentTimeMillis() - at < maxAgeMs) return list }
-        val fresh = EspnSource.fetch(League.CFB)
-        cached = System.currentTimeMillis() to fresh
+    /** A league's games (today/this week), live first. Reuses a download up to [maxAgeMs] old. */
+    fun games(league: League = League.CFB, maxAgeMs: Long = 60_000): List<Game> {
+        cached[league]?.let { (at, list) -> if (System.currentTimeMillis() - at < maxAgeMs) return list }
+        val fresh = EspnSource.fetch(league)
+        cached[league] = System.currentTimeMillis() to fresh
         return fresh
     }
 

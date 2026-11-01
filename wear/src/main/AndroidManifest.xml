@@ -49,6 +49,66 @@
         </service>
 
         <service
+            android:name=".NflTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_football"
+            android:label="NFL Scores"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".WnbaTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_football"
+            android:label="WNBA Scores"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".NhlTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_football"
+            android:label="NHL Scores"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".XcTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_football"
+            android:label="XC Meets"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
+            android:name=".TfTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_football"
+            android:label="Track &amp; Field"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
+
+        <service
             android:name=".OsuComplicationService"
             android:exported="true"
             android:icon="@drawable/ic_stat_football"
