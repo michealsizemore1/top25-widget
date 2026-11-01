@@ -43,7 +43,8 @@
         <activity
             android:name=".run.RunActivity"
             android:exported="true"
-            android:icon="@drawable/ic_stat_run"
+            android:icon="@drawable/ic_launcher_run"
+            android:roundIcon="@drawable/ic_launcher_run"
             android:label="Run"
             android:launchMode="singleTask"
             android:taskAffinity="io.github.michealsizemore1.top25widget.run">
