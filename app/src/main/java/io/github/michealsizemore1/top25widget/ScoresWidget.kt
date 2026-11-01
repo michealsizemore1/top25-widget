@@ -102,9 +102,9 @@ abstract class LeagueScoresWidget(val league: League) : GlanceAppWidget() {
         private val LIST_LARGE = DpSize(250.dp, 260.dp)    // 4x3 and bigger
     }
 
-    override val sizeMode = SizeMode.Responsive(
-        setOf(STRIP_SMALL, STRIP_WIDE, LIST_NARROW, LIST_WIDE, LIST_LARGE)
-    )
+    // Exact: draw only the size the widget actually is. Drawing all five layouts at once
+    // with ~50 logos made busy-Saturday updates too big for Android to deliver.
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent {
@@ -263,7 +263,7 @@ private fun TeamLineRow(team: TeamLine, game: Game, narrow: Boolean, detailed: B
 
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (!narrow) {
-            val logo = Logos.bitmap(context, team.logoKey)
+            val logo = Logos.small(context, team.logoKey)
             if (logo != null) {
                 Image(
                     provider = ImageProvider(logo),

@@ -232,6 +232,16 @@ object Logos {
         }
     }
 
+    private val smallCache = LruCache<String, Bitmap>(80)
+
+    /** Widget-sized logo (shown at 20dp): small enough that a full Saturday slate fits in one update. */
+    fun small(ctx: Context, key: String): Bitmap? {
+        if (key.isBlank()) return null
+        smallCache.get(key)?.let { return it }
+        val full = bitmap(ctx, key) ?: return null
+        return Bitmap.createScaledBitmap(full, 36, 36, true).also { smallCache.put(key, it) }
+    }
+
     fun bitmap(ctx: Context, key: String): Bitmap? {
         if (key.isBlank()) return null
         cache.get(key)?.let { return it }
