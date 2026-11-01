@@ -24,5 +24,6 @@ class WorkoutParseTest {
     @Test fun miles() { assertNotNull(show("Tuesday, November 10\n6 miles easy + 6 x 20 sec strides")) }
     @Test fun cross() { show("Cross-training 45 min or rest") }
     @Test fun hills() { show("Wednesday\nHill repeats: 6 x 90 sec uphill hard, jog down. 7 miles total") }
-    @Test fun mpace() { show("Thursday\n10 miles with middle 6 @ goal 50K pace 9:30/mi") }
+    @Test fun mpace() { assertEquals(3, Workouts.flatten(show("Thursday\n10 miles with middle 6 @ goal 50K pace 9:30/mi")!!).size) }
+    @Test fun lastFast() { assertEquals(2, Workouts.flatten(show("Sunday\nLong run 14 miles w/ last 3 at marathon pace")!!).size) }
 }

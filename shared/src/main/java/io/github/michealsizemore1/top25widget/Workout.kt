@@ -135,7 +135,9 @@ object Workouts {
         val explicitZone = Regex("""\b(?:z|zone\s*)([1-5])\b""").find(t)?.groupValues?.get(1)?.toIntOrNull()
         val pace = Regex("""(\d{1,2}:\d{2})\s*(?:-|–|to)\s*(\d{1,2}:\d{2})""").find(t)?.let {
             secs(it.groupValues[1]) to secs(it.groupValues[2])
-        } ?: Regex("""@\s*(\d{1,2}:\d{2})""").find(t)?.let { secs(it.groupValues[1]).let { p -> (p - 10) to (p + 10) } }
+        } ?: (Regex("""@\s*(\d{1,2}:\d{2})""").find(t)
+              ?: Regex("""(\d{1,2}:\d{2})\s*(?:/\s*mi|/\s*mile|min/mi|min per mile|per mile|pace)""").find(t))
+              ?.let { secs(it.groupValues[1]).let { p -> (p - 10) to (p + 10) } }
 
         val label = when {
             Regex("""\brace\b""").containsMatchIn(t) -> "Race"
@@ -147,8 +149,33 @@ object Workouts {
             else -> "Easy Run"
         }
 
-        fun distOrOpen(m: Double?) = if (m != null && m > 0) "dist" to mi(m) else "open" to 0
+        fun distOrOpen(m: Double?) = if (m != null && m > 0) "dist" to mi(Math.round(m * 4) / 4.0) else "open" to 0
         fun easyStep(kind: String, m: Double?, zone: Int = 2) = distOrOpen(m).let { (d, v) -> step(kind, d, v, "hr", zone) }
+
+        // Easy run with strides: "6 miles easy + 6 x 20 sec strides"
+        if (Regex("""\bstrides?\b""").containsMatchIn(t)) {
+            val n = Regex("""(\d+)\s*[x×]""").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 6
+            val sec = Regex("""(\d+)\s*(?:sec|s\b|seconds?)""").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 20
+            return workout("Easy + Strides", notes, easyStep("run", total, explicitZone ?: 2),
+                repeat(n, step("run", "time", sec), step("recover", "time", 60, "hr", 1)))
+        }
+
+        // A faster section inside a run: "10 miles with middle 6 @ goal pace", "12 mi w/ last 3 at tempo"
+        Regex("""(?:w/|with|incl\.?|including)\s*(?:the\s*)?(middle|last|final|first)?\s*(\d+(?:\.\d+)?)\s*(?:mi\b|miles?)?\s*(?:@|at|of)\b?""").find(t)
+            ?.takeIf { label != "Intervals" && total != null }?.let { m ->
+                val where = m.groupValues[1]
+                val hard = m.groupValues[2].toDouble()
+                val easy = (total!! - hard).coerceAtLeast(0.0)
+                val fast = step("run", "dist", mi(hard))
+                if (pace != null) fast.put("target", "pace").put("zone", 0).put("lo", pace.first).put("hi", pace.second)
+                else fast.put("target", "hr").put("zone", explicitZone ?: if (label == "Tempo Run") 4 else 3)
+                val name = if (label == "Easy Run") "${fmt(total)} mi w/ ${fmt(hard)} fast" else label
+                return when (where) {
+                    "last", "final" -> workout(name, notes, easyStep("run", easy), fast)
+                    "first" -> workout(name, notes, fast, easyStep("run", easy))
+                    else -> workout(name, notes, easyStep("warmup", easy / 2), fast, easyStep("cooldown", easy / 2))
+                }
+            }
 
         // Repeats: "6 x 800m", "4 × 1 mile", "5x3 min"
         Regex("""(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(m\b|meters?|k\b|km|mi\b|miles?|min\b|minutes?|sec\b|seconds?|s\b)""").find(t)?.let { m ->
