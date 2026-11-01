@@ -23,25 +23,44 @@ object Run {
         val avgHr: Int, val avgPower: Int, val avgCadence: Int, val auto: Boolean,
     )
 
-    /** Stryd's power zones as a share of Critical Power. */
-    data class Zone(val number: Int, val name: String, val lo: Double, val hi: Double, val color: Int)
+    /** Zone colors, Z1–Z5, matching the Command Center badges. */
+    val ZONE_COLORS = intArrayOf(0xFF4FA3E0.toInt(), 0xFF46C46E.toInt(), 0xFFF2C94C.toInt(), 0xFFFF8A3D.toInt(), 0xFFE5484D.toInt())
+
+    /** Power zones as a share of Critical Power — the same breakpoints as the Command Center. */
+    data class Zone(val number: Int, val name: String, val lo: Double, val color: Int)
     val ZONES = listOf(
-        Zone(1, "Easy", 0.65, 0.80, 0xFF7FA7D9.toInt()),
-        Zone(2, "Moderate", 0.80, 0.90, 0xFF46C46E.toInt()),
-        Zone(3, "Threshold", 0.90, 1.00, 0xFFF2C94C.toInt()),
-        Zone(4, "Interval", 1.00, 1.15, 0xFFFF8A3D.toInt()),
-        Zone(5, "Repetition", 1.15, 1.30, 0xFFE5484D.toInt()),
+        Zone(1, "Recovery", 0.0, ZONE_COLORS[0]),
+        Zone(2, "Aerobic / endurance", 0.55, ZONE_COLORS[1]),
+        Zone(3, "Tempo", 0.75, ZONE_COLORS[2]),
+        Zone(4, "Threshold", 0.90, ZONE_COLORS[3]),
+        Zone(5, "VO2 max", 1.05, ZONE_COLORS[4]),
     )
 
-    /** Zone index 0–4 for a power reading, or -1 with no Critical Power set / no power. */
+    /** Power zone index 0–4, or -1 with no Critical Power set / no power. */
     fun zoneIndex(watts: Int, cp: Int = criticalPower): Int {
         if (cp <= 0 || watts <= 0) return -1
         val f = watts.toDouble() / cp
         return ZONES.indexOfLast { f >= it.lo }.coerceAtLeast(0)
     }
 
+    /** Heart-rate zones (Karvonen, 50/60/70/80/90% of heart-rate reserve) — same as the Command Center. */
+    val HR_ZONE_NAMES = listOf("Recovery", "Aerobic base", "Aerobic threshold", "Anaerobic", "Max effort")
+    fun hrBounds(): IntArray {
+        val reserve = (hrMax - hrRest).coerceAtLeast(1.0)
+        return doubleArrayOf(0.5, 0.6, 0.7, 0.8, 0.9).map { Math.round(hrRest + reserve * it).toInt() }.toIntArray()
+    }
+    /** Heart-rate zone index 0–4, or -1 below Zone 1 / no reading. */
+    fun hrZoneIndex(bpm: Int): Int {
+        if (bpm <= 0) return -1
+        return hrBounds().indexOfLast { bpm >= it }
+    }
+    /** Percent of heart-rate reserve. */
+    fun hrrPercent(bpm: Int) = if (bpm <= 0) 0 else ((bpm - hrRest) * 100 / (hrMax - hrRest).coerceAtLeast(1.0)).roundToInt()
+
     // ---------------------------------------------------------------- settings
-    @Volatile var criticalPower = 0          // watts; 0 = not set
+    @Volatile var criticalPower = 333        // watts
+    @Volatile var hrMax = 185.0
+    @Volatile var hrRest = 43.5
     @Volatile var strydCalibration = 1.0     // multiplies Stryd distance and speed
     @Volatile var source = Source.STRYD
     @Volatile var autoPause = true
@@ -57,6 +76,7 @@ object Run {
     @Volatile var strydTotalDistance: Double? = null   // meters, as the pod reports it
     @Volatile var strydLastUpdate = 0L
     @Volatile var strydBattery = -1         // percent, -1 = unknown
+    @Volatile var strydStride = 0.0         // meters, if the pod sends it
     @Volatile var gpsFix = false
     @Volatile var gpsStatus = "Off"
     @Volatile var gpsSpeed = 0.0            // m/s
@@ -81,6 +101,9 @@ object Run {
     private val power30Window = ArrayDeque<Int>()    // last 30 s, for normalized power
     private var np4Sum = 0.0; private var np4Count = 0
     val zoneSeconds = IntArray(5)
+    val hrZoneSeconds = IntArray(5)
+    private var lapHrSum = 0L; private var lapHrCount = 0
+    private var strideSum = 0.0; private var strideCount = 0
     private var lapPowerSum = 0L; private var lapPowerCount = 0
     var maxPower = 0; private set
     val laps = ArrayList<Lap>()
@@ -129,7 +152,7 @@ object Run {
         fun avg(i: Int) = slice.map { it[i] }.filter { it > 0 }.let { if (it.isEmpty()) 0 else it.average().roundToInt() }
         laps += Lap(laps.size + 1, sec, distance - lapStartMeters, avg(2), avg(5), avg(4), auto)
         lapStartSec = movingSeconds; lapStartMeters = distance; lapSampleStart = samples.size
-        lapPowerSum = 0; lapPowerCount = 0
+        lapPowerSum = 0; lapPowerCount = 0; lapHrSum = 0; lapHrCount = 0
         onEvent?.invoke(if (auto) "lap_auto" else "lap")
         changed()
     }
@@ -152,6 +175,7 @@ object Run {
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
         power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
         zoneSeconds.fill(0); lapPowerSum = 0; lapPowerCount = 0; maxPower = 0
+        hrZoneSeconds.fill(0); lapHrSum = 0; lapHrCount = 0; strideSum = 0.0; strideCount = 0
         lapStartSec = 0; lapStartMeters = 0.0; lapSampleStart = 0; slowSeconds = 0
         hrSum = 0; hrCount = 0; maxHr = 0; powerSum = 0; powerCount = 0; cadSum = 0; cadCount = 0
         gpsPendingMeters = 0.0
@@ -219,7 +243,12 @@ object Run {
             }
 
             val hr = heartRate
-            if (hr > 0) { hrSum += hr; hrCount++; if (hr > maxHr) maxHr = hr }
+            if (hr > 0) {
+                hrSum += hr; hrCount++; if (hr > maxHr) maxHr = hr
+                lapHrSum += hr; lapHrCount++
+                hrZoneIndex(hr).takeIf { it >= 0 }?.let { hrZoneSeconds[it]++ }
+            }
+            if (strydStride > 0.2 && speedNow > 0.9) { strideSum += strydStride * strydCalibration; strideCount++ }
             if (strydPower > 0) { powerSum += strydPower; powerCount++ }
             val cad = if (source == Source.STRYD || strydConnected) strydCadence else 0
             if (cad > 0) { cadSum += cad; cadCount++ }
@@ -244,6 +273,8 @@ object Run {
     val avgPower get() = if (powerCount == 0) 0 else (powerSum / powerCount).toInt()
     val avgCadence get() = if (cadCount == 0) 0 else (cadSum / cadCount).toInt()
     val avgSpeed get() = if (movingSeconds == 0) 0.0 else distance / movingSeconds
+    val lapHr get() = if (lapHrCount == 0) 0 else (lapHrSum / lapHrCount).toInt()
+    val avgStride get() = if (strideCount == 0) 0.0 else strideSum / strideCount
     val power10s get() = if (power10Window.isEmpty()) strydPower else power10Window.average().roundToInt()
     val lapPower get() = if (lapPowerCount == 0) 0 else (lapPowerSum / lapPowerCount).toInt()
     /** Normalized power: 30 s rolling average, raised to the 4th power, averaged, 4th root. */
@@ -271,6 +302,9 @@ object Run {
             put("zoneSeconds", JSONArray(zoneSeconds.toList()))
         }
         if (source == Source.STRYD) put("calibration", strydCalibration)
+        put("hrMax", hrMax); put("hrRest", hrRest)
+        put("hrZoneSeconds", JSONArray(hrZoneSeconds.toList()))
+        if (avgStride > 0) put("avgStride", avgStride)
         put("laps", JSONArray().apply {
             laps.forEach { l ->
                 put(JSONObject().apply {

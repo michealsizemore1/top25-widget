@@ -43,10 +43,10 @@ class RunActivity : Activity() {
 
     private lateinit var root: FrameLayout
     private var screen = Screen.START
-    private var page = 1                 // 0 = controls, 1 = main, 2 = power, 3 = lap, 4 = averages, 5 = stress
+    private var page = 1                 // 0 controls, 1 main, 2 heart, 3 power, 4 lap, 5 averages, 6 stress
     private var confirmingFinish = false
     private var summary: JSONObject? = null
-    private val pageCount = 6
+    private val pageCount = 7
     /** While a number editor is open, the bezel adjusts it. */
     private var editorRotary: ((Int) -> Unit)? = null
     private var lastRotary = 0L
@@ -62,7 +62,9 @@ class RunActivity : Activity() {
         Run.source = if (prefs.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
         Run.autoPause = prefs.getBoolean("autoPause", true)
         Run.recordGpsTrack = prefs.getBoolean("track", false)
-        Run.criticalPower = prefs.getInt("cp", 0)
+        Run.criticalPower = prefs.getInt("cp", 333)
+        Run.hrMax = prefs.getFloat("hrMax", 185f).toDouble()
+        Run.hrRest = prefs.getFloat("hrRest", 43.5f).toDouble()
         Run.strydCalibration = prefs.getFloat("cal", 1f).toDouble()
 
         if (!RunService.running) RunStore.recoverInterrupted(this)
@@ -132,7 +134,9 @@ class RunActivity : Activity() {
                 (if (Run.strydConnected && Run.strydBattery >= 0) " · ${Run.strydBattery}%" else "") +
                 (if (Run.strydConnected && Run.strydPower > 0) " · ${Run.strydPower} W" else ""),
             if (Run.strydConnected) (if (Run.strydBattery in 0..15) C.PAUSE else C.OK) else C.MUTED)
-        set("cp", if (Run.criticalPower > 0) "${Run.criticalPower} W ▸" else "Not set ▸", if (Run.criticalPower > 0) Color.WHITE else C.PAUSE)
+        set("cp", "${Run.criticalPower} W ▸")
+        set("hrmax", "${fmtHr(Run.hrMax)} bpm ▸")
+        set("hrrest", "${fmtHr(Run.hrRest)} bpm ▸")
         set("cal", String.format(java.util.Locale.US, "%.3f ▸", Run.strydCalibration))
         val gpsNeeded = Run.source == Run.Source.GPS || Run.recordGpsTrack
         set("gps", if (gpsNeeded) Run.gpsStatus else "Off (not needed)", if (Run.gpsFix && gpsNeeded) C.OK else C.MUTED)
@@ -173,9 +177,18 @@ class RunActivity : Activity() {
         col.addView(row("stryd", "Stryd footpod (tap to re-pair)") {
             if (!Run.strydConnected) RunService.instance?.pairStryd()
         })
-        col.addView(row("cp", "Critical Power (zones)") {
-            editNumber("CRITICAL POWER", if (Run.criticalPower > 0) Run.criticalPower.toDouble() else 250.0,
-                1.0, 100.0, 600.0, { "${it.toInt()} W" }) {
+        col.addView(row("hrmax", "Max heart rate (HR zones)") {
+            editNumber("MAX HEART RATE", Run.hrMax, 1.0, 140.0, 230.0, { "${it.toInt()} bpm" }) {
+                Run.hrMax = it; prefs.edit().putFloat("hrMax", it.toFloat()).apply()
+            }
+        })
+        col.addView(row("hrrest", "Resting heart rate (HR zones)") {
+            editNumber("RESTING HEART RATE", Run.hrRest, 0.5, 30.0, 90.0, { "${fmtHr(it)} bpm" }) {
+                Run.hrRest = it; prefs.edit().putFloat("hrRest", it.toFloat()).apply()
+            }
+        })
+        col.addView(row("cp", "Critical Power (power zones)") {
+            editNumber("CRITICAL POWER", Run.criticalPower.toDouble(), 1.0, 100.0, 600.0, { "${it.toInt()} W" }) {
                 Run.criticalPower = it.toInt(); prefs.edit().putInt("cp", Run.criticalPower).apply()
             }
         })
@@ -324,8 +337,8 @@ class RunActivity : Activity() {
         zoneBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
-            Run.ZONES.forEach { z ->
-                addView(View(context).apply { background = rounded(z.color, 3) },
+            Run.ZONE_COLORS.forEach { color ->
+                addView(View(context).apply { background = rounded(color, 3) },
                     LinearLayout.LayoutParams(0, dp(6), 1f).apply { marginStart = dp(2); marginEnd = dp(2) })
             }
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
@@ -400,17 +413,28 @@ class RunActivity : Activity() {
             else -> null
         }
         val zi = Run.zoneIndex(Run.power3s)
+        val hz = Run.hrZoneIndex(Run.heartRate)
+        val hrColor = if (hz >= 0) Run.ZONE_COLORS[hz] else 0xFFFF6B6B.toInt()
+        val hrZoneText = if (hz >= 0) "Z${hz + 1} · ${Run.HR_ZONE_NAMES[hz]}" else if (Run.heartRate > 0) "below Z1" else "heart rate"
         val pageName = when (page) {
             1 -> "RUN"
-            2 -> if (zi >= 0) "Z${zi + 1} · ${Run.ZONES[zi].name.uppercase()}" else "POWER"
-            3 -> "LAP ${Run.lapNumber}"
-            4 -> "AVERAGES"
+            2 -> if (hz >= 0) "HR Z${hz + 1} · ${Run.HR_ZONE_NAMES[hz].uppercase()}" else "HEART RATE"
+            3 -> if (zi >= 0) "Z${zi + 1} · ${Run.ZONES[zi].name.uppercase()}" else "POWER"
+            4 -> "LAP ${Run.lapNumber}"
+            5 -> "AVERAGES"
             else -> "STRESS"
         }
         liveTitle.text = stateText ?: pageName
-        liveTitle.setTextColor(if (stateText != null) C.PAUSE else if (page == 2 && zi >= 0) Run.ZONES[zi].color else C.ACCENT)
-        zoneBar.visibility = if (page == 2 && Run.criticalPower > 0) View.VISIBLE else View.GONE
-        if (page == 2) for (i in 0 until zoneBar.childCount) zoneBar.getChildAt(i).alpha = if (i == zi) 1f else 0.22f
+        liveTitle.setTextColor(when {
+            stateText != null -> C.PAUSE
+            page == 2 && hz >= 0 -> hrColor
+            page == 3 && zi >= 0 -> Run.ZONES[zi].color
+            else -> C.ACCENT
+        })
+        // Zone bar: heart-rate zone on the main and heart pages, power zone on the power page.
+        val barZone = when (page) { 1, 2 -> hz; 3 -> zi; else -> -2 }
+        zoneBar.visibility = if (barZone == -2) View.GONE else View.VISIBLE
+        for (i in 0 until zoneBar.childCount) zoneBar.getChildAt(i).alpha = if (i == barZone) 1f else 0.22f
 
         val hr = if (Run.heartRate > 0) "${Run.heartRate}" else "--"
         when (page) {
@@ -418,29 +442,40 @@ class RunActivity : Activity() {
                 show(fieldA, Run.clock(Run.movingSeconds), "time")
                 show(fieldB, Run.miles(Run.distance), "miles")
                 show(fieldC, Run.pace(Run.currentSpeed), "pace /mi", C.ACCENT)
-                show(fieldD, hr, "heart rate", 0xFFFF6B6B.toInt())
+                show(fieldD, hr, hrZoneText, hrColor)
             }
             2 -> {
+                show(fieldA, hr, "bpm", hrColor)
+                show(fieldB, if (Run.lapHr > 0) "${Run.lapHr}" else "--", "lap HR")
+                show(fieldC, if (Run.avgHr > 0) "${Run.avgHr}" else "--", "avg HR")
+                val b = Run.hrBounds()
+                show(fieldD, if (Run.heartRate > 0) "${Run.hrrPercent(Run.heartRate)}%" else "--",
+                    if (hz in 0..3) "HRR · Z${hz + 1} ${b[hz]}–${b[hz + 1] - 1}" else if (hz == 4) "HRR · Z5 ${b[4]}+" else "of HR reserve",
+                    hrColor)
+            }
+            3 -> {
                 show(fieldA, if (Run.strydConnected) "${Run.power3s}" else "--", "watts (3s)",
                     if (zi >= 0) Run.ZONES[zi].color else C.ACCENT)
                 show(fieldB, if (Run.strydConnected) "${Run.power10s}" else "--", "10s W")
                 show(fieldC, if (Run.lapPower > 0) "${Run.lapPower}" else "--", "lap W")
-                if (Run.criticalPower > 0) show(fieldD,
+                show(fieldD,
                     if (Run.power3s > 0) "${(Run.power3s * 100.0 / Run.criticalPower).toInt()}%" else "--",
                     "of CP (${Run.criticalPower} W)", if (zi >= 0) Run.ZONES[zi].color else Color.WHITE)
-                else show(fieldD, "--", "set CP for zones", C.MUTED)
             }
-            3 -> {
+            4 -> {
                 show(fieldA, Run.clock(Run.lapSeconds), "lap time")
                 show(fieldB, Run.miles(Run.lapMeters), "lap mi")
                 show(fieldC, Run.paceFor(Run.lapSeconds, Run.lapMeters), "lap pace", C.ACCENT)
-                show(fieldD, Run.laps.lastOrNull()?.let { Run.clock(it.seconds) } ?: "--", "last lap")
+                show(fieldD, if (Run.lapHr > 0) "${Run.lapHr}" else "--", "lap HR",
+                    Run.hrZoneIndex(Run.lapHr).let { if (it >= 0) Run.ZONE_COLORS[it] else Color.WHITE })
             }
-            5 -> {
-                show(fieldA, if (Run.criticalPower > 0) "${Run.stress}" else "--", "stress (est.)", C.ACCENT)
+            6 -> {
+                show(fieldA, "${Run.stress}", "stress (est.)", C.ACCENT)
                 show(fieldB, if (Run.normalizedPower > 0) "${Run.normalizedPower}" else "--", "norm W")
                 show(fieldC, if (Run.intensity > 0) String.format(java.util.Locale.US, "%.2f", Run.intensity) else "--", "intensity")
-                show(fieldD, if (Run.strydCadence > 0) "${Run.strydCadence}" else "--", "cadence")
+                show(fieldD, (if (Run.strydCadence > 0) "${Run.strydCadence}" else "--") +
+                    (if (Run.strydStride > 0.2) String.format(java.util.Locale.US, " · %.2fm", Run.strydStride * Run.strydCalibration) else ""),
+                    if (Run.strydStride > 0.2) "cadence · stride" else "cadence")
             }
             else -> {
                 show(fieldA, Run.pace(Run.avgSpeed), "avg pace /mi", C.ACCENT)
@@ -497,6 +532,7 @@ class RunActivity : Activity() {
 
     // ---------------------------------------------------------------- helpers
 
+    private fun fmtHr(v: Double) = if (v % 1.0 == 0.0) "${v.toInt()}" else String.format(java.util.Locale.US, "%.1f", v)
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radiusDp).toFloat() }
     private fun column() = LinearLayout(this).apply {

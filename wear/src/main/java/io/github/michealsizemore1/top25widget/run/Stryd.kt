@@ -214,7 +214,7 @@ class Stryd(private val ctx: Context) {
                 var cadence = u8(b, 3)                  // per spec steps/min; some pods send strides/min
                 if (cadence in 1..119 && speed > 1.8) cadence *= 2
                 var i = 4
-                if (flags and 0x01 != 0) i += 2         // stride length present (skip)
+                if (flags and 0x01 != 0 && b.size >= i + 2) { Run.strydStride = u16(b, i) / 100.0; i += 2 }   // stride length, cm
                 if (flags and 0x02 != 0 && b.size >= i + 4) Run.strydTotalDistance = u32(b, i) / 10.0
                 Run.strydSpeed = speed
                 Run.strydCadence = cadence
