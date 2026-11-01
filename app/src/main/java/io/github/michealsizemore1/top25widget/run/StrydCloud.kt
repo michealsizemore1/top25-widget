@@ -133,6 +133,8 @@ object StrydCloud {
         val run = PhoneRuns.read(ctx, start) ?: return
         run.put("stryd", metrics)
         PhoneRuns.save(ctx, run)
+        // New details to share: offer it to the Command Center again (resending updates, never duplicates).
+        ctx.getSharedPreferences("runflags", 0).edit().remove("cc_$start").apply()
     }
 }
 
