@@ -130,7 +130,7 @@ class MainActivity : Activity() {
         root.addView(statusView)
 
         root.addView(TextView(this).apply {
-            text = "Sports Scores ${packageManager.getPackageInfo(packageName, 0).versionName}"
+            text = "Version ${packageManager.getPackageInfo(packageName, 0).versionName?.substringBefore(" ·")}"
             textSize = 13f
             setTextColor(Color.parseColor("#6B7370"))
             setPadding(0, px(16), 0, 0)
