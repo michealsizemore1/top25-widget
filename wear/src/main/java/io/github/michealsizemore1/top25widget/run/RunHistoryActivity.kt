@@ -1,0 +1,171 @@
+package io.github.michealsizemore1.top25widget.run
+
+import android.app.Activity
+import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import org.json.JSONObject
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/** Saved runs on the watch: a list, then each run's totals and mile splits. */
+class RunHistoryActivity : Activity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        showList()
+    }
+
+    private fun showList() {
+        val files = RunStore.list(this)
+        val col = RunViews.column(this)
+        col.addView(RunViews.label(this, "HISTORY", RunViews.ACCENT, 14f, true).apply { letterSpacing = 0.15f })
+        if (files.isEmpty()) {
+            col.addView(RunViews.label(this, "No runs yet", RunViews.MUTED, 14f).apply { setPadding(0, RunViews.dp(this@RunHistoryActivity, 10), 0, 0) })
+        }
+        files.forEach { f ->
+            val json = RunStore.read(f) ?: return@forEach
+            col.addView(RunViews.card(this).apply {
+                addView(RunViews.label(context, RunViews.date(json.optLong("start")), RunViews.MUTED, 11f))
+                addView(RunViews.label(context,
+                    "${Run.miles(json.optDouble("distance"))} mi · ${Run.clock(json.optInt("movingSeconds"))}",
+                    Color.WHITE, 15f, true))
+                addView(RunViews.label(context,
+                    "${Run.paceFor(json.optInt("movingSeconds"), json.optDouble("distance"))} /mi" +
+                        (json.optInt("avgPower").takeIf { it > 0 }?.let { " · $it W" } ?: "") +
+                        (json.optInt("avgHr").takeIf { it > 0 }?.let { " · $it bpm" } ?: ""),
+                    RunViews.ACCENT, 12f))
+                setOnClickListener { showRun(f, json) }
+            })
+        }
+        setContentView(RunViews.scroll(this, col))
+    }
+
+    private fun showRun(file: File, json: JSONObject) {
+        val view = RunViews.summary(this, json, onDone = { showList() }, onDelete = {
+            RunStore.delete(file); showList()
+        })
+        setContentView(view)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Back from a run's details returns to the list first.
+        if (window.decorView.findViewWithTag<View>("summary") != null) showList()
+        else @Suppress("DEPRECATION") super.onBackPressed()
+    }
+}
+
+/** Shared view helpers for the run screens. */
+object RunViews {
+    const val ACCENT = 0xFFD4E635.toInt()
+    const val MUTED = 0xFF9AA3A0.toInt()
+    const val CARD = 0xFF1C2421.toInt()
+    const val STOP = 0xFFE5484D.toInt()
+
+    fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
+
+    fun date(ms: Long): String = SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault()).format(Date(ms))
+
+    fun label(ctx: Context, text: String, color: Int, size: Float, bold: Boolean = false) = TextView(ctx).apply {
+        this.text = text
+        setTextColor(color)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        gravity = Gravity.CENTER
+        if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+    }
+
+    fun column(ctx: Context) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        val w = ctx.resources.displayMetrics.widthPixels
+        setPadding(w / 8, w / 7, w / 8, w / 4)
+    }
+
+    fun card(ctx: Context) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(ctx, 12), dp(ctx, 7), dp(ctx, 12), dp(ctx, 7))
+        background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(ctx, 14).toFloat() }
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(ctx, 6) }
+    }
+
+    fun scroll(ctx: Context, content: View) = ScrollView(ctx).apply {
+        setBackgroundColor(Color.BLACK)
+        isVerticalScrollBarEnabled = false
+        addView(content)
+        requestFocus()   // bezel scrolls
+    }
+
+    /** Totals, averages, and mile splits for a finished run. */
+    fun summary(ctx: Context, json: JSONObject, onDone: () -> Unit, onDelete: (() -> Unit)? = null): View {
+        val col = column(ctx)
+        val sec = json.optInt("movingSeconds")
+        val meters = json.optDouble("distance")
+        col.addView(label(ctx, if (json.optBoolean("recovered")) "RECOVERED RUN" else "RUN SAVED", ACCENT, 13f, true).apply { letterSpacing = 0.12f })
+        col.addView(label(ctx, date(json.optLong("start")), MUTED, 11f))
+        col.addView(label(ctx, Run.miles(meters), Color.WHITE, 40f, true))
+        col.addView(label(ctx, "miles", MUTED, 11f))
+
+        fun stat(name: String, value: String) = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(label(ctx, name, MUTED, 13f).apply { gravity = Gravity.START; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f) })
+            addView(label(ctx, value, Color.WHITE, 14f, true).apply { gravity = Gravity.END; layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT) })
+        }
+        col.addView(card(ctx).apply {
+            addView(stat("Time", Run.clock(sec)))
+            addView(stat("Avg pace", Run.paceFor(sec, meters) + " /mi"))
+            json.optInt("avgHr").takeIf { it > 0 }?.let { addView(stat("Avg HR", "$it bpm")) }
+            json.optInt("maxHr").takeIf { it > 0 }?.let { addView(stat("Max HR", "$it bpm")) }
+            json.optInt("avgPower").takeIf { it > 0 }?.let { addView(stat("Avg power", "$it W")) }
+            json.optInt("avgCadence").takeIf { it > 0 }?.let { addView(stat("Avg cadence", "$it spm")) }
+            addView(stat("Source", if (json.optString("source") == "gps") "GPS" else "Stryd"))
+        })
+
+        val laps = json.optJSONArray("laps")
+        if (laps != null && laps.length() > 0) {
+            col.addView(label(ctx, "SPLITS", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
+            col.addView(card(ctx).apply {
+                for (i in 0 until laps.length()) {
+                    val l = laps.getJSONObject(i)
+                    val lsec = l.optInt("sec"); val lm = l.optDouble("m")
+                    addView(stat(
+                        "${l.optInt("n")}" + if (lm < Run.METERS_PER_MILE * 0.95) " (${Run.miles(lm)})" else "",
+                        Run.paceFor(lsec, lm) +
+                            (l.optInt("pw").takeIf { it > 0 }?.let { " · ${it}W" } ?: "") +
+                            (l.optInt("hr").takeIf { it > 0 }?.let { " · $it" } ?: ""),
+                    ))
+                }
+            })
+        }
+
+        col.addView(label(ctx, "Done", Color.BLACK, 16f, true).apply {
+            background = GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 24).toFloat() }
+            setPadding(0, dp(ctx, 10), 0, dp(ctx, 10))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(ctx, 12) }
+            setOnClickListener { onDone() }
+        })
+        if (onDelete != null) {
+            var armed = false
+            col.addView(label(ctx, "Delete run", STOP, 13f, true).apply {
+                setPadding(0, dp(ctx, 12), 0, 0)
+                setOnClickListener {
+                    if (armed) onDelete() else { armed = true; text = "Tap again to delete" }
+                }
+            })
+        }
+        return scroll(ctx, col).apply { tag = "summary" }
+    }
+}
