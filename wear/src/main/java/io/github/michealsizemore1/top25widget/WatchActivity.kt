@@ -24,6 +24,9 @@ import androidx.wear.tiles.TileService
  */
 class WatchActivity : Activity() {
 
+    /** True when this file was installed on the wrong kind of device (a message is shown instead). */
+    private var wrongDevice = false
+
     companion object {
         const val EXTRA_GAME = "game"
         /** A league key ("cfb", "nfl", "wnba", "nhl"), or "xc" / "tf". */
@@ -43,7 +46,7 @@ class WatchActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) return
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) { wrongDevice = true; return }
         val w = resources.displayMetrics.widthPixels
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -66,7 +69,7 @@ class WatchActivity : Activity() {
         handleIntent(intent)
     }
 
-    override fun onResume() { super.onResume(); visible = true; load() }
+    override fun onResume() { super.onResume(); if (wrongDevice) return; visible = true; load() }
     override fun onPause() { super.onPause(); visible = false; handler.removeCallbacks(refresh) }
 
     private fun handleIntent(i: Intent) {

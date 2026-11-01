@@ -29,6 +29,9 @@ import kotlin.math.abs
  */
 class RunActivity : Activity() {
 
+    /** True when this file was installed on the wrong kind of device (a message is shown instead). */
+    private var wrongDevice = false
+
     private object C {
         const val ACCENT = 0xFFD4E635.toInt()
         const val MUTED = 0xFF9AA3A0.toInt()
@@ -60,7 +63,7 @@ class RunActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) return
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) { wrongDevice = true; return }
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
 
@@ -88,15 +91,17 @@ class RunActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (wrongDevice) return
         Run.listen(onRunChanged)
         // Coming back from History (which stopped the idle sensors): turn them on again.
         if (!RunService.running && screen != Screen.SUMMARY) RunService.start(this)
         render()
     }
-    override fun onPause() { super.onPause(); Run.unlisten(onRunChanged) }
+    override fun onPause() { super.onPause(); if (!wrongDevice) Run.unlisten(onRunChanged) }
 
     override fun onStop() {
         super.onStop()
+        if (wrongDevice) return
         // Leaving the start screen without running: turn the sensors back off.
         if (!Run.isActive && screen != Screen.LIVE && !isChangingConfigurations) RunService.stop(this)
     }
@@ -447,12 +452,14 @@ class RunActivity : Activity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (wrongDevice) return super.dispatchTouchEvent(ev)
         if (screen == Screen.LIVE && liveBuilt && gestures.onTouchEvent(ev)) return true
         return super.dispatchTouchEvent(ev)
     }
 
     /** Turning the bezel also flips pages. */
     override fun onGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (wrongDevice) return super.onGenericMotionEvent(ev)
         val ed = editorRotary
         if (ed != null && ev.action == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER)) {
             ed(if (-ev.getAxisValue(MotionEvent.AXIS_SCROLL) > 0) 1 else -1)

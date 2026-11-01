@@ -16,6 +16,9 @@ import android.widget.Toast
 /** Small launcher screen: lets you pin the widget and explains how to resize it. */
 class MainActivity : Activity() {
 
+    /** True when this file was installed on the wrong kind of device (a message is shown instead). */
+    private var wrongDevice = false
+
     private var statusView: TextView? = null
     private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
     private val tick = object : Runnable {
@@ -27,6 +30,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (wrongDevice) return
         // Opening the app is also a refresh.
         League.entries.forEach { Scheduler.refreshNow(this, it) }
         ticker.post(tick)
@@ -39,7 +43,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) return
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) { wrongDevice = true; return }
         val dp = resources.displayMetrics.density
         fun px(v: Int) = (v * dp).toInt()
 

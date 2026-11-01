@@ -18,11 +18,14 @@ import java.util.Locale
 /** The phone's Running home: runs from the watch, and where they've been sent. */
 class RunsActivity : Activity() {
 
+    /** True when this file was installed on the wrong kind of device (a message is shown instead). */
+    private var wrongDevice = false
+
     private val ui get() = RunUi
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) return
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) { wrongDevice = true; return }
         handleStravaRedirect(intent)
     }
 
@@ -33,6 +36,7 @@ class RunsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (wrongDevice) return
         WorkoutStore.pushToWatch(this)   // keeps the watch's "today" plan current
         render()
     }
