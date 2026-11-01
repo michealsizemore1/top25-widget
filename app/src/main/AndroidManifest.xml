@@ -51,6 +51,24 @@
             android:label="Run settings"
             android:windowSoftInputMode="adjustResize"
             android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
+        <activity
+            android:name=".run.WorkoutsActivity"
+            android:exported="false"
+            android:label="Workouts"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
+        <activity
+            android:name=".run.WorkoutEditActivity"
+            android:exported="false"
+            android:label="Workout"
+            android:windowSoftInputMode="adjustResize"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
         <service
             android:name=".run.RunReceiverService"
             android:exported="true">

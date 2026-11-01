@@ -193,7 +193,7 @@ class RunDetailActivity : Activity() {
                 addView(row(listOf("#", "mi", "time", "pace", "HR", "W"), RunUi.MUTED, true))
                 for (i in 0 until laps.length()) {
                     val l = laps.getJSONObject(i)
-                    addView(row(listOf("${l.optInt("n")}", RunMath.miles(l.optDouble("m")), RunMath.clock(l.optInt("sec")),
+                    addView(row(listOf(l.optString("name").takeIf { it.isNotBlank() } ?: "${l.optInt("n")}", RunMath.miles(l.optDouble("m")), RunMath.clock(l.optInt("sec")),
                         RunMath.paceFor(l.optInt("sec"), l.optDouble("m")),
                         l.optInt("hr").takeIf { it > 0 }?.toString() ?: "–", l.optInt("pw").takeIf { it > 0 }?.toString() ?: "–"),
                         Color.WHITE, false))
@@ -207,6 +207,11 @@ class RunDetailActivity : Activity() {
             col.addView(RunUi.card(this).apply { addView(RunUi.route(ctx, track)) })
         }
 
+        col.addView(RunUi.text(this, "Share TCX file (for manual Strava or other uploads)", RunUi.ACCENT, 14f, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(24), 0, 0)
+            setOnClickListener { shareTcx(run) }
+        })
         col.addView(RunUi.text(this, "Delete this run", 0xFFE5484D.toInt(), 14f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(24), 0, 0)
@@ -242,6 +247,19 @@ class RunDetailActivity : Activity() {
             } catch (e: Exception) { "Stryd: ${e.message}" }
             runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); PhoneRuns.read(this, start)?.let { render(it) } }
         }.start()
+    }
+
+    private fun shareTcx(run: JSONObject) {
+        val dir = java.io.File(cacheDir, "tcx").apply { mkdirs() }
+        val f = java.io.File(dir, "run-${SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date(run.optLong("start")))}.tcx")
+        f.writeText(Tcx.build(run))
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "application/vnd.garmin.tcx+xml"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, PhoneRuns.title(run))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }, "Share run file"))
     }
 
     private fun uploadNow(run: JSONObject) {

@@ -233,6 +233,10 @@ class RunService : Service(), SensorEventListener, LocationListener {
             "lap", "lap_auto" -> longArrayOf(0, 250, 120, 250)
             "autopause" -> longArrayOf(0, 120)
             "autoresume" -> longArrayOf(0, 120, 80, 120)
+            "step" -> longArrayOf(0, 300, 120, 300, 120, 300)          // new workout step
+            "workout_done" -> longArrayOf(0, 700, 200, 700)
+            "push" -> longArrayOf(0, 90, 90, 90, 90, 90)                // speed up / work harder
+            "ease" -> longArrayOf(0, 600)                               // ease off
             else -> longArrayOf(0, 200)
         }
         v.vibrate(VibrationEffect.createWaveform(pattern, -1))

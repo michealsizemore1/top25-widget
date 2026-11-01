@@ -32,13 +32,33 @@ class RunsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        WorkoutStore.pushToWatch(this)   // keeps the watch's "today" plan current
         render()
+    }
+
+    /** The Command Center's "Send plan to Running app" opens scoresrun://localhost/plan#<days>. */
+    private fun handlePlanImport(data: android.net.Uri): Boolean {
+        if (data.path?.startsWith("/plan") != true) return false
+        val b64 = data.encodedFragment ?: return true
+        Thread {
+            val msg = try {
+                val days = org.json.JSONObject(String(android.util.Base64.decode(b64, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)))
+                val n = WorkoutStore.importPlan(this, days)
+                "Imported $n planned workouts — sent to your watch"
+            } catch (e: Exception) { "Couldn't read the plan: ${e.message}" }
+            runOnUiThread {
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, WorkoutsActivity::class.java).putExtra("tab", "plan"))
+            }
+        }.start()
+        return true
     }
 
     /** Strava sends you back here after you approve: finish connecting. */
     private fun handleStravaRedirect(i: Intent?) {
         val data = i?.data ?: return
         if (data.scheme != "scoresrun") return
+        if (handlePlanImport(data)) return
         val code = data.getQueryParameter("code")
         if (code == null) { Toast.makeText(this, "Strava wasn't connected", Toast.LENGTH_LONG).show(); return }
         Thread {
@@ -115,6 +135,26 @@ class RunsActivity : Activity() {
                         else "Checking Stryd for ${missing.size} run${if (missing.size == 1) "" else "s"}…", Toast.LENGTH_SHORT).show()
                 } else startActivity(Intent(ctx, RunSettingsActivity::class.java))
             }, lp(true))
+        })
+
+        // Workouts & plan, with today's workout.
+        val todayW = WorkoutStore.plan(this).optJSONObject(WorkoutStore.dayFmt.format(Date()))
+        col.addView(RunUi.card(this).apply {
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(LinearLayout(ctx).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(RunUi.text(ctx, "TODAY", RunUi.MUTED, 11f, true))
+                    addView(RunUi.text(ctx, todayW?.optString("name") ?: "No workout planned", Color.WHITE, 17f, true))
+                    todayW?.let { w ->
+                        addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Workouts.outline(w, RunSettings.hrMax(ctx),
+                            RunSettings.hrRest(ctx), RunSettings.cp(ctx)).take(4).joinToString("\n"), RunUi.MUTED, 12f))
+                    }
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                addView(RunUi.button(ctx, "Workouts & Plan", RunUi.ACCENT) {
+                    startActivity(Intent(ctx, WorkoutsActivity::class.java))
+                })
+            })
         })
 
         col.addView(RunUi.section(this, "RUNS FROM YOUR WATCH"))

@@ -99,7 +99,9 @@ class RunSettingsActivity : Activity() {
             })
         } else {
             col.addView(RunUi.text(this,
-                "One-time setup:\n" +
+                "Strava now requires a paid Strava subscription to use its API. Without one, open any run " +
+                "and tap Share TCX file, then upload that file on strava.com (Upload activity → File).\n\n" +
+                "One-time setup (with a subscription):\n" +
                 "1. Open strava.com/settings/api (link below) and create an app. Any name and website work; " +
                 "set Authorization Callback Domain to  localhost\n" +
                 "2. Copy the Client ID and Client Secret here.\n" +

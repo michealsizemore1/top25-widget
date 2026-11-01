@@ -150,6 +150,9 @@ object RunViews {
         val meters = json.optDouble("distance")
         col.addView(label(ctx, if (json.optBoolean("recovered")) "RECOVERED RUN" else "RUN SAVED", ACCENT, 13f, true).apply { letterSpacing = 0.12f })
         col.addView(label(ctx, date(json.optLong("start")), MUTED, 11f))
+        json.optJSONObject("workout")?.let { w ->
+            col.addView(label(ctx, w.optString("name") + if (w.optBoolean("completed")) " ✓" else " (partial)", ACCENT, 12f, true))
+        }
         col.addView(label(ctx, Run.miles(meters), Color.WHITE, 40f, true))
         col.addView(label(ctx, "miles", MUTED, 11f))
 
@@ -198,7 +201,8 @@ object RunViews {
                     val l = laps.getJSONObject(i)
                     val lsec = l.optInt("sec"); val lm = l.optDouble("m")
                     addView(stat(
-                        "${l.optInt("n")}" + if (lm < Run.METERS_PER_MILE * 0.95) " (${Run.miles(lm)})" else "",
+                        (l.optString("name").takeIf { it.isNotBlank() } ?: "${l.optInt("n")}") +
+                            if (lm < Run.METERS_PER_MILE * 0.95) " (${Run.miles(lm)})" else "",
                         Run.paceFor(lsec, lm) +
                             (l.optInt("pw").takeIf { it > 0 }?.let { " · ${it}W" } ?: "") +
                             (l.optInt("hr").takeIf { it > 0 }?.let { " · $it" } ?: ""),

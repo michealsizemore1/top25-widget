@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 30
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.0"
+        versionCode = 9
+        versionName = "3.0"
     }
 
     signingConfigs {

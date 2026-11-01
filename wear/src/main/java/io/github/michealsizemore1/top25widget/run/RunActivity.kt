@@ -49,6 +49,10 @@ class RunActivity : Activity() {
     private val pageCount = 7
     /** While a number editor is open, the bezel adjusts it. */
     private var editorRotary: ((Int) -> Unit)? = null
+    /** True while the workout picker covers the start screen. */
+    private var overlayOpen = false
+    /** Live pages in order: 0 controls, 7 workout step (only with a workout), 1 main, 2 heart, 3 power, 4 lap, 5 averages, 6 stress. */
+    private fun pageOrder() = if (Run.hasWorkout) listOf(0, 7, 1, 2, 3, 4, 5, 6) else listOf(0, 1, 2, 3, 4, 5, 6)
     private var lastRotary = 0L
     private val prefs by lazy { getSharedPreferences("run", 0) }
 
@@ -69,6 +73,12 @@ class RunActivity : Activity() {
         Run.strydCalibration = prefs.getFloat("cal", 1f).toDouble()
 
         if (!RunService.running) RunStore.recoverInterrupted(this)
+        // Load today's planned workout once a day (you can switch to a free run on the start screen).
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        if (!Run.isActive && Run.workout == null && prefs.getString("autoPicked", "") != today) {
+            WatchWorkouts.today(this)?.let { Run.chooseWorkout(it) }
+            prefs.edit().putString("autoPicked", today).apply()
+        }
         RunSync.pushAll(this)   // send any runs the phone doesn't have yet
         screen = if (Run.isActive) Screen.LIVE else Screen.START
         requestNeeded()
@@ -113,7 +123,7 @@ class RunActivity : Activity() {
 
     private fun render() {
         when (screen) {
-            Screen.START -> if (Run.isActive) { screen = Screen.LIVE; renderLive() } else if (editorRotary == null) renderStart()
+            Screen.START -> if (Run.isActive) { screen = Screen.LIVE; renderLive() } else if (editorRotary == null && !overlayOpen) renderStart()
             Screen.LIVE -> renderLive()
             Screen.SUMMARY -> {}   // static; drawn once in finish()
         }
@@ -132,6 +142,13 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
+        set("workout", (Run.workout?.optString("name") ?: "Free run") + " ▸", C.ACCENT)
+        startValues["workoutOutline"]?.apply {
+            val w = Run.workout
+            text = if (w == null) "" else io.github.michealsizemore1.top25widget.Workouts.outline(w, Run.hrMax, Run.hrRest, Run.criticalPower)
+                .take(6).joinToString("\n")
+            visibility = if (w == null) View.GONE else View.VISIBLE
+        }
         set("stryd", Run.strydStatus +
                 (if (Run.strydConnected && Run.strydBattery >= 0) " · ${Run.strydBattery}%" else "") +
                 (if (Run.strydConnected && Run.strydPower > 0) " · ${Run.strydPower} W" else ""),
@@ -180,9 +197,12 @@ class RunActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
             addView(label(title, C.MUTED, 11f))
             addView(label("", Color.WHITE, 14f, true).also { startValues[key] = it })
-            if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null) renderStart() }
+            if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null && !overlayOpen) renderStart() }
         }
 
+        col.addView(row("workout", "Workout") { showWorkoutPicker() }.apply {
+            addView(label("", C.MUTED, 10f).apply { startValues["workoutOutline"] = this; visibility = View.GONE })
+        })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
             prefs.edit().putString("source", Run.source.name.lowercase()).apply()
@@ -235,7 +255,7 @@ class RunActivity : Activity() {
             setOnClickListener {
                 if (!RunService.running) RunService.start(this@RunActivity)
                 Run.start()
-                screen = Screen.LIVE; page = 1; liveBuilt = false
+                screen = Screen.LIVE; page = 1; liveBuilt = false   // with a workout, page 1 is its step screen
                 render()
             }
         })
@@ -299,10 +319,40 @@ class RunActivity : Activity() {
         root.isFocusable = true; root.isFocusableInTouchMode = true; root.requestFocus()
     }
 
+    /** Pick today's planned workout, one from the library, or a free run. */
+    private fun showWorkoutPicker() {
+        overlayOpen = true
+        startBuilt = false
+        val w = resources.displayMetrics.widthPixels
+        val col = column().apply { setPadding(w / 8, w / 7, w / 8, w / 4) }
+        col.addView(label("WORKOUT", C.ACCENT, 13f, true).apply { letterSpacing = 0.12f })
+        fun item(title: String, sub: String, workout: org.json.JSONObject?) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = rounded(C.CARD, 14)
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
+            addView(label(title, Color.WHITE, 14f, true))
+            if (sub.isNotBlank()) addView(label(sub, C.MUTED, 10f))
+            setOnClickListener {
+                Run.chooseWorkout(workout)
+                overlayOpen = false; startBuilt = false; renderStart()
+            }
+        }
+        fun outline(x: org.json.JSONObject) =
+            io.github.michealsizemore1.top25widget.Workouts.outline(x, Run.hrMax, Run.hrRest, Run.criticalPower).take(3).joinToString(" · ")
+        col.addView(item("Free run", "No targets", null))
+        WatchWorkouts.today(this)?.let { col.addView(item("Today: " + it.optString("name"), outline(it), it)) }
+        WatchWorkouts.library(this).forEach { col.addView(item(it.optString("name"), outline(it), it)) }
+        if (WatchWorkouts.library(this).isEmpty())
+            col.addView(label("Build workouts in the phone's Running app — they show up here.", C.DIM, 11f).apply { setPadding(0, dp(10), 0, 0) })
+        root.removeAllViews()
+        root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // Back (or swipe) from a number editor returns to the start screen without saving.
-        if (editorRotary != null) { editorRotary = null; startBuilt = false; renderStart(); return }
+        if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -408,7 +458,7 @@ class RunActivity : Activity() {
     }
 
     private fun turnPage(delta: Int) {
-        page = (page + delta).coerceIn(0, pageCount - 1)
+        page = (page + delta).coerceIn(0, pageOrder().size - 1)
         confirmingFinish = false
         renderLive()
     }
@@ -421,7 +471,11 @@ class RunActivity : Activity() {
         if (!liveBuilt) buildLive()
         val paused = Run.state == Run.State.PAUSED || Run.state == Run.State.AUTO_PAUSED
         root.setBackgroundColor(if (paused) 0xFF2A1F05.toInt() else Color.BLACK)
-        dots.text = (0 until pageCount).joinToString(" ") { if (it == page) "●" else "○" }
+        val order = pageOrder()
+        if (this.page >= order.size) this.page = order.size - 1
+        dots.text = order.indices.joinToString(" ") { if (it == this.page) "●" else "○" }
+        val page = order[this.page]   // which screen this position shows
+        fieldD.first.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
 
         if (page == 0) { renderControls(paused); return }
         dataBox.visibility = View.VISIBLE
@@ -437,6 +491,7 @@ class RunActivity : Activity() {
         val hrColor = if (hz >= 0) Run.ZONE_COLORS[hz] else 0xFFFF6B6B.toInt()
         val hrZoneText = if (hz >= 0) "Z${hz + 1} · ${Run.HR_ZONE_NAMES[hz]}" else if (Run.heartRate > 0) "below Z1" else "heart rate"
         val pageName = when (page) {
+            7 -> stepTitle()
             1 -> "RUN"
             2 -> if (hz >= 0) "HR Z${hz + 1} · ${Run.HR_ZONE_NAMES[hz].uppercase()}" else "HEART RATE"
             3 -> if (zi >= 0) "Z${zi + 1} · ${Run.ZONES[zi].name.uppercase()}" else "POWER"
@@ -453,6 +508,7 @@ class RunActivity : Activity() {
         })
         // Zone bar: heart-rate zone on the main and heart pages, power zone on the power page.
         val barZone = when (page) { 1, 2 -> hz; 3 -> zi; else -> -2 }
+        if (page == 7) { zoneBar.visibility = View.GONE; renderStep(stateText); return }
         zoneBar.visibility = if (barZone == -2) View.GONE else View.VISIBLE
         for (i in 0 until zoneBar.childCount) zoneBar.getChildAt(i).alpha = if (i == barZone) 1f else 0.22f
 
@@ -506,6 +562,62 @@ class RunActivity : Activity() {
         }
     }
 
+    // ---------------------------------------------------------------- workout step page
+
+    private fun stepTitle(): String {
+        if (Run.workoutDone) return "WORKOUT DONE"
+        val s = Run.currentStep ?: return "WORKOUT"
+        val kind = io.github.michealsizemore1.top25widget.Workouts.kindName(s.optString("kind")).uppercase()
+        return if (s.has("rep")) "$kind · ${s.optInt("rep")}/${s.optInt("reps")}"
+               else "$kind · ${Run.stepIndex + 1}/${Run.workoutSteps.size}"
+    }
+
+    private fun renderStep(stateText: String?) {
+        if (stateText != null) { liveTitle.text = stateText; liveTitle.setTextColor(C.PAUSE) }
+        else { liveTitle.text = stepTitle(); liveTitle.setTextColor(C.ACCENT) }
+        if (Run.workoutDone) {
+            show(fieldA, Run.clock(Run.movingSeconds), "total time")
+            show(fieldB, Run.miles(Run.distance), "miles")
+            show(fieldC, Run.pace(Run.currentSpeed), "pace", C.ACCENT)
+            show(fieldD, "✓", "keep running or finish", C.OK)
+            return
+        }
+        val s = Run.currentStep ?: return
+        // Big number: what's left in the step.
+        val rem = Run.stepRemaining
+        when (s.optString("dur")) {
+            "time" -> show(fieldA, Run.clock(rem?.toInt() ?: 0), "left in step")
+            "dist" -> show(fieldA, rem?.let { if (s.optInt("value") < 1600) "${it.toInt()} m" else Run.miles(it) } ?: "--",
+                if (s.optInt("value") < 1600) "left in step" else "mi left in step")
+            else -> show(fieldA, Run.clock(Run.stepSeconds), "tap NEXT STEP when done")
+        }
+        // Target and where you are against it.
+        val target = s.optString("target")
+        val (lo, hi) = Run.stepTarget
+        val v = Run.stepValue()
+        val color = when (Run.stepStatus) { 0 -> C.OK; null -> Color.WHITE; else -> if (
+            (target == "pace" && Run.stepStatus == 1) || (target != "pace" && Run.stepStatus == -1)) 0xFF4FA3E0.toInt() else C.STOP }
+        val hint = when (Run.stepStatus) {
+            0 -> "on target"
+            -1 -> if (target == "pace") "ease off" else "speed up"
+            1 -> if (target == "pace") "speed up" else "ease off"
+            else -> ""
+        }
+        when (target) {
+            "hr" -> show(fieldB, v?.toString() ?: "--", "HR $lo–$hi", color)
+            "power" -> show(fieldB, v?.toString() ?: "--", "W $lo–$hi", color)
+            "pace" -> show(fieldB, v?.let { Run.clock(it) } ?: "--", "${Run.clock(lo)}–${Run.clock(hi)}", color)
+            else -> show(fieldB, if (Run.heartRate > 0) "${Run.heartRate}" else "--", "HR", Color.WHITE)
+        }
+        show(fieldC, Run.paceFor(Run.stepSeconds, Run.stepMeters), if (hint.isNotEmpty()) hint else "step pace",
+            if (hint.isNotEmpty()) color else C.ACCENT)
+        val next = Run.nextStep
+        show(fieldD, if (next == null) "Last step" else "Next: " +
+            io.github.michealsizemore1.top25widget.Workouts.kindName(next.optString("kind")) + " " +
+            io.github.michealsizemore1.top25widget.Workouts.durText(next), "", C.MUTED)
+        fieldD.first.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+    }
+
     private fun renderControls(paused: Boolean) {
         dataBox.visibility = View.GONE
         controlsBox.visibility = View.VISIBLE
@@ -532,7 +644,8 @@ class RunActivity : Activity() {
         } else {
             controlsBox.addView(if (paused) button("RESUME", C.ACCENT) { Run.resume() }
                                 else button("PAUSE", C.PAUSE) { Run.pause() })
-            controlsBox.addView(button("LAP", C.CARD, Color.WHITE) { Run.lap() })
+            if (Run.hasWorkout && !Run.workoutDone) controlsBox.addView(button("NEXT STEP", C.CARD, Color.WHITE) { Run.nextWorkoutStep(auto = false) })
+            else controlsBox.addView(button("LAP", C.CARD, Color.WHITE) { Run.lap() })
             controlsBox.addView(button("FINISH", C.STOP, Color.WHITE) { Run.pause(); confirmingFinish = true })
         }
     }

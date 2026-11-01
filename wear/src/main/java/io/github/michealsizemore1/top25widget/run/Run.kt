@@ -20,8 +20,106 @@ object Run {
 
     data class Lap(
         val number: Int, val seconds: Int, val meters: Double,
-        val avgHr: Int, val avgPower: Int, val avgCadence: Int, val auto: Boolean,
+        val avgHr: Int, val avgPower: Int, val avgCadence: Int, val auto: Boolean, val name: String = "",
     )
+
+    // ---------------------------------------------------------------- guided workout
+    /** The workout chosen for the next run (null = free run). */
+    @Volatile var workout: JSONObject? = null
+    var workoutSteps: List<JSONObject> = emptyList(); private set
+    @Volatile var stepIndex = 0; private set
+    @Volatile var workoutDone = false; private set
+    private var stepStartSec = 0
+    private var stepStartMeters = 0.0
+    private var stepLo = 0; private var stepHi = 0
+    private var outSeconds = 0
+    private var lastNudge = 0L
+    /** -1 below target, 0 in range, 1 above, null no target / not checked yet. */
+    @Volatile var stepStatus: Int? = null; private set
+
+    val hasWorkout get() = workout != null && workoutSteps.isNotEmpty()
+    val currentStep get() = workoutSteps.getOrNull(stepIndex)
+    val nextStep get() = workoutSteps.getOrNull(stepIndex + 1)
+    val stepSeconds get() = movingSeconds - stepStartSec
+    val stepMeters get() = distance - stepStartMeters
+    val stepTarget get() = stepLo to stepHi
+
+    fun chooseWorkout(w: JSONObject?) {
+        workout = w
+        workoutSteps = w?.let { io.github.michealsizemore1.top25widget.Workouts.flatten(it) } ?: emptyList()
+        changed()
+    }
+
+    private fun beginStep(i: Int) {
+        stepIndex = i
+        stepStartSec = movingSeconds; stepStartMeters = distance
+        outSeconds = 0; stepStatus = null
+        currentStep?.let { s ->
+            val (lo, hi) = io.github.michealsizemore1.top25widget.Workouts.resolve(s, hrMax, hrRest, criticalPower)
+            stepLo = lo; stepHi = hi
+        }
+    }
+
+    /** Ends the current step (Lap button, or the step's time/distance is reached). */
+    fun nextWorkoutStep(auto: Boolean) {
+        if (!hasWorkout || workoutDone || state == State.IDLE) return
+        lap(auto = auto, silent = true)
+        if (stepIndex + 1 >= workoutSteps.size) {
+            workoutDone = true; stepStatus = null
+            onEvent?.invoke("workout_done")
+        } else {
+            beginStep(stepIndex + 1)
+            onEvent?.invoke("step")
+        }
+        changed()
+    }
+
+    /** Remaining time (s) or distance (m) in the step; null for "until lap" steps. */
+    val stepRemaining: Double? get() {
+        val s = currentStep ?: return null
+        return when (s.optString("dur")) {
+            "time" -> (s.optInt("value") - stepSeconds).toDouble().coerceAtLeast(0.0)
+            "dist" -> (s.optInt("value") - stepMeters).coerceAtLeast(0.0)
+            else -> null
+        }
+    }
+
+    /** The reading being compared to the target: bpm, watts, or pace in s/mi. */
+    fun stepValue(): Int? {
+        val s = currentStep ?: return null
+        return when (s.optString("target")) {
+            "hr" -> heartRate.takeIf { it > 0 }
+            "power" -> power3s.takeIf { it > 0 }
+            "pace" -> currentSpeed.takeIf { it > 0.5 }?.let { (METERS_PER_MILE / it).roundToInt() }
+            else -> null
+        }
+    }
+
+    private fun checkWorkout() {
+        val s = currentStep ?: return
+        val done = when (s.optString("dur")) {
+            "time" -> stepSeconds >= s.optInt("value")
+            "dist" -> stepMeters >= s.optInt("value")
+            else -> false
+        }
+        if (done) { nextWorkoutStep(auto = true); return }
+        val target = s.optString("target")
+        val v = stepValue()
+        // Give heart rate time to catch up after a change of effort.
+        val grace = if (target == "hr") 45 else 15
+        if (target == "none" || v == null || stepLo <= 0 || stepHi <= 0) { stepStatus = null; return }
+        val status = if (v < stepLo) -1 else if (v > stepHi) 1 else 0
+        stepStatus = status
+        if (stepSeconds < grace) return
+        outSeconds = if (status == 0) 0 else outSeconds + 1
+        val now = System.currentTimeMillis()
+        if (outSeconds >= 8 && now - lastNudge > 30_000) {
+            lastNudge = now
+            // For pace, a bigger number means slower — so "above" means speed up.
+            val faster = if (target == "pace") status > 0 else status < 0
+            onEvent?.invoke(if (faster) "push" else "ease")
+        }
+    }
 
     /** Zone colors, Z1–Z5, matching the Command Center badges. */
     val ZONE_COLORS = intArrayOf(0xFF4FA3E0.toInt(), 0xFF46C46E.toInt(), 0xFFF2C94C.toInt(), 0xFFFF8A3D.toInt(), 0xFFE5484D.toInt())
@@ -147,6 +245,8 @@ object Run {
         reset()
         startMillis = System.currentTimeMillis()
         lastStrydTotal = strydTotalDistance
+        workoutDone = false
+        if (hasWorkout) beginStep(0)
         state = State.RUNNING
         changed()
     }
@@ -161,16 +261,20 @@ object Run {
         }
     }
 
-    fun lap(auto: Boolean = false) {
+    fun lap(auto: Boolean = false, silent: Boolean = false) {
         if (state == State.IDLE) return
         val sec = movingSeconds - lapStartSec
         if (sec <= 0) return
         val slice = samples.subList(lapSampleStart, samples.size)
         fun avg(i: Int) = slice.map { it[i] }.filter { it > 0 }.let { if (it.isEmpty()) 0 else it.average().roundToInt() }
-        laps += Lap(laps.size + 1, sec, distance - lapStartMeters, avg(2), avg(5), avg(4), auto)
+        val name = if (hasWorkout && !workoutDone) currentStep?.let { s ->
+            io.github.michealsizemore1.top25widget.Workouts.kindName(s.optString("kind")) +
+                (if (s.has("rep")) " ${s.optInt("rep")}/${s.optInt("reps")}" else "")
+        }.orEmpty() else ""
+        laps += Lap(laps.size + 1, sec, distance - lapStartMeters, avg(2), avg(5), avg(4), auto, name)
         lapStartSec = movingSeconds; lapStartMeters = distance; lapSampleStart = samples.size
         lapPowerSum = 0; lapPowerCount = 0; lapHrSum = 0; lapHrCount = 0
-        onEvent?.invoke(if (auto) "lap_auto" else "lap")
+        if (!silent) onEvent?.invoke(if (auto) "lap_auto" else "lap")
         changed()
     }
 
@@ -181,6 +285,7 @@ object Run {
         RunStore.save(ctx, json)
         RunStore.clearCurrent(ctx)
         state = State.IDLE
+        chooseWorkout(null)   // next run starts as a free run unless a workout is picked
         changed()
         return json
     }
@@ -274,8 +379,9 @@ object Run {
             if (cad > 0) { cadSum += cad; cadCount++ }
             samples += intArrayOf(movingSeconds, (distance * 10).toInt(), hr, (speedNow * 100).toInt(), cad, strydPower, elapsedSeconds)
 
-            // Auto-lap every mile.
-            if (distance - lapStartMeters >= METERS_PER_MILE) lap(auto = true)
+            if (hasWorkout && !workoutDone) checkWorkout()
+            // Auto-lap every mile (during a workout, each step is a lap instead).
+            else if (distance - lapStartMeters >= METERS_PER_MILE) lap(auto = true)
         } else if (state == State.PAUSED || state == State.AUTO_PAUSED) {
             lastStrydTotal = strydTotalDistance
             gpsPendingMeters = 0.0
@@ -323,6 +429,11 @@ object Run {
         }
         if (source == Source.STRYD) put("calibration", strydCalibration)
         put("hrMax", hrMax); put("hrRest", hrRest)
+        workout?.let { w ->
+            put("workout", JSONObject().put("name", w.optString("name")).put("notes", w.optString("notes"))
+                .put("steps", w.optJSONArray("steps")).put("completed", workoutDone)
+                .put("stepsDone", if (workoutDone) workoutSteps.size else stepIndex))
+        }
         put("hrSource", if (movingSeconds > 0 && strapSeconds * 2 >= movingSeconds) "strap" else "wrist")
         synchronized(rr) { if (rr.isNotEmpty()) put("rr", JSONArray(rr.toList())) }
         put("hrZoneSeconds", JSONArray(hrZoneSeconds.toList()))
@@ -332,6 +443,7 @@ object Run {
                 put(JSONObject().apply {
                     put("n", l.number); put("sec", l.seconds); put("m", l.meters)
                     put("hr", l.avgHr); put("pw", l.avgPower); put("cad", l.avgCadence); put("auto", l.auto)
+                    if (l.name.isNotEmpty()) put("name", l.name)
                 })
             }
         })

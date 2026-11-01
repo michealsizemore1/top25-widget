@@ -43,10 +43,34 @@ object RunSync {
     }
 }
 
-/** Receives zone settings from the phone app. */
+/** Workouts and the training plan, as sent by the phone. */
+object WatchWorkouts {
+    private fun file(ctx: Context) = java.io.File(ctx.filesDir, "workouts.json")
+    fun save(ctx: Context, text: String) = file(ctx).writeText(text)
+    private fun load(ctx: Context): org.json.JSONObject =
+        try { org.json.JSONObject(file(ctx).readText()) } catch (e: Exception) { org.json.JSONObject() }
+
+    fun library(ctx: Context): List<org.json.JSONObject> =
+        load(ctx).optJSONArray("library")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.orEmpty()
+
+    /** Planned workout for a date (yyyy-MM-dd), with the plan's text in its notes. */
+    fun planFor(ctx: Context, date: String): org.json.JSONObject? = load(ctx).optJSONObject("plan")?.optJSONObject(date)
+
+    fun today(ctx: Context) = planFor(ctx, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()))
+}
+
+/** Receives zone settings and workouts from the phone app. */
 class RunSettingsListener : WearableListenerService() {
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
+            if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == "/workouts") {
+                try {
+                    val asset = DataMapItem.fromDataItem(e.dataItem).dataMap.getAsset("data") ?: return@forEach
+                    val input = com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(this).getFdForAsset(asset)).inputStream
+                    WatchWorkouts.save(this, java.util.zip.GZIPInputStream(input).use { it.readBytes().toString(Charsets.UTF_8) })
+                } catch (ex: Exception) { }
+                return@forEach
+            }
             if (e.type != DataEvent.TYPE_CHANGED || e.dataItem.uri.path != "/settings") return@forEach
             val m = DataMapItem.fromDataItem(e.dataItem).dataMap
             val p = getSharedPreferences("run", 0).edit()

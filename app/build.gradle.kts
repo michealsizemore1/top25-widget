@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "4.1"
+        versionCode = 25
+        versionName = "5.0"
     }
 
     // One fixed key so every new build can install as an update over the last one.
@@ -49,5 +49,6 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
+    implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
