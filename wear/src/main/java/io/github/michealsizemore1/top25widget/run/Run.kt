@@ -206,7 +206,7 @@ object Run {
         gpsLat = lat; gpsLon = lon; gpsSpeed = speed; gpsFix = true; gpsLastUpdate = System.currentTimeMillis()
         if (state == State.RUNNING || state == State.AUTO_PAUSED) {
             if (state == State.RUNNING) gpsPendingMeters += metersMoved
-            if (recordGpsTrack || source == Source.GPS) track += doubleArrayOf(lat, lon, movingSeconds.toDouble())
+            if (recordGpsTrack || source == Source.GPS) track += doubleArrayOf(lat, lon, movingSeconds.toDouble(), elapsedSeconds.toDouble())
         }
     }
 
@@ -272,7 +272,7 @@ object Run {
             if (strydPower > 0) { powerSum += strydPower; powerCount++ }
             val cad = if (source == Source.STRYD || strydConnected) strydCadence else 0
             if (cad > 0) { cadSum += cad; cadCount++ }
-            samples += intArrayOf(movingSeconds, (distance * 10).toInt(), hr, (speedNow * 100).toInt(), cad, strydPower)
+            samples += intArrayOf(movingSeconds, (distance * 10).toInt(), hr, (speedNow * 100).toInt(), cad, strydPower, elapsedSeconds)
 
             // Auto-lap every mile.
             if (distance - lapStartMeters >= METERS_PER_MILE) lap(auto = true)
@@ -335,7 +335,8 @@ object Run {
                 })
             }
         })
-        // Compact per-second samples: [t, meters*10, hr, speed*100, cadence, power]
+        // Compact per-second samples: [moving s, meters*10, hr, speed*100, cadence, power, elapsed s]
+        // GPS track points: [lat, lon, moving s, elapsed s]
         put("samples", JSONArray().apply { samples.forEach { s -> put(JSONArray(s.toList())) } })
         if (track.isNotEmpty()) put("track", JSONArray().apply { track.forEach { p -> put(JSONArray(p.toList())) } })
     }

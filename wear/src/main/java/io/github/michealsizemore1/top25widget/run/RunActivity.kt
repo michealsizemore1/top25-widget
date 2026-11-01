@@ -69,6 +69,7 @@ class RunActivity : Activity() {
         Run.strydCalibration = prefs.getFloat("cal", 1f).toDouble()
 
         if (!RunService.running) RunStore.recoverInterrupted(this)
+        RunSync.pushAll(this)   // send any runs the phone doesn't have yet
         screen = if (Run.isActive) Screen.LIVE else Screen.START
         requestNeeded()
     }
@@ -540,6 +541,7 @@ class RunActivity : Activity() {
 
     private fun finishRun() {
         val json = Run.finish(this)
+        RunSync.pushAll(this)
         RunService.stop(this)
         summary = json
         screen = Screen.SUMMARY

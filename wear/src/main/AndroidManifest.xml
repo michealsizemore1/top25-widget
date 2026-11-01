@@ -61,6 +61,15 @@
             android:taskAffinity="io.github.michealsizemore1.top25widget.run" />
 
         <service
+            android:name=".run.RunSettingsListener"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:path="/settings" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".run.RunService"
             android:exported="false"
             android:foregroundServiceType="location|health|connectedDevice" />

@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 30
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "2.0"
     }
 
     signingConfigs {
@@ -38,6 +38,7 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation("androidx.wear:wear-ongoing:1.0.0")
     implementation("androidx.wear.tiles:tiles:1.4.1")
     implementation("androidx.wear.protolayout:protolayout:1.2.1")

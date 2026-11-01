@@ -21,6 +21,46 @@
         </activity>
 
         <activity
+            android:name=".run.RunsActivity"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_run"
+            android:roundIcon="@drawable/ic_launcher_run"
+            android:label="Running"
+            android:launchMode="singleTask"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Strava sends you back here after you approve the connection. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="scoresrun" android:host="localhost" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".run.RunDetailActivity"
+            android:exported="false"
+            android:label="Run"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
+        <activity
+            android:name=".run.RunSettingsActivity"
+            android:exported="false"
+            android:label="Run settings"
+            android:windowSoftInputMode="adjustResize"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
+        <service
+            android:name=".run.RunReceiverService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/run/" />
+            </intent-filter>
+        </service>
+
+        <activity
             android:name=".GameActivity"
             android:exported="false"
             android:label="Game"
