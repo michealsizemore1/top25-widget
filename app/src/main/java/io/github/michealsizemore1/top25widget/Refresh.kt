@@ -23,6 +23,10 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import androidx.work.ForegroundInfo
+import androidx.work.OutOfQuotaPolicy
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -79,6 +83,8 @@ object Scheduler {
             OneTimeWorkRequestBuilder<ScoresWorker>()
                 .setConstraints(online)
                 .setInputData(workDataOf(INPUT_LEAGUE to league.key))
+                // Ask Android to run a tapped refresh right away, not when it gets around to it.
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build(),
         )
     }
@@ -95,9 +101,9 @@ object Scheduler {
             .setConstraints(online)
             .setInputData(workDataOf(INPUT_FAST to true, INPUT_LEAGUE to league.key))
             .build()
-        // A fast run chains the next one after itself; any other run leaves an existing loop alone.
-        val policy = if (calledFromFastRun) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP
-        WorkManager.getInstance(ctx).enqueueUniqueWork(name("fast", league), policy, request)
+        // REPLACE: every run (fast, periodic, or tapped) sets the next check 2 minutes out,
+        // so a failed or stuck run can never leave the live loop stalled.
+        WorkManager.getInstance(ctx).enqueueUniqueWork(name("fast", league), ExistingWorkPolicy.REPLACE, request)
     }
 
     fun cancelAll(ctx: Context, league: League) {
@@ -108,23 +114,36 @@ object Scheduler {
 
 class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
+    /** Needed for expedited runs on Android 11 and older; Android 12+ doesn't show it. */
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val nm = applicationContext.getSystemService(android.app.NotificationManager::class.java)
+        nm.createNotificationChannel(android.app.NotificationChannel("sync", "Score updates", android.app.NotificationManager.IMPORTANCE_MIN))
+        val n = android.app.Notification.Builder(applicationContext, "sync")
+            .setSmallIcon(R.drawable.ic_stat_football)
+            .setContentTitle("Updating scores…")
+            .build()
+        return ForegroundInfo(42, n)
+    }
+
     override suspend fun doWork(): Result {
         val ctx = applicationContext
         val league = League.from(inputData.getString(Scheduler.INPUT_LEAGUE))
+        val fast = inputData.getBoolean(Scheduler.INPUT_FAST, false)
         val widget = widgetFor(league)
         val ids = GlanceAppWidgetManager(ctx).getGlanceIds(widget.javaClass)
         if (ids.isEmpty()) {
             Scheduler.cancelAll(ctx, league)
             return Result.success()
         }
+        Status.attempt(ctx, league)
 
-        return try {
-            val games = withContext(Dispatchers.IO) {
-                EspnSource.fetch(league).also { list ->
-                    Logos.ensure(ctx, list.flatMap { listOf(it.away, it.home) }.associate { it.logoKey to it.logoUrl })
-                }
+        var games: List<Game>? = null
+        try {
+            val fetched: List<Game> = withTimeout(45_000) {
+                withContext(Dispatchers.IO) { EspnSource.fetch(league) }
             }
-            val json = GameJson.encode(games)
+            games = fetched
+            val json = GameJson.encode(fetched)
             val now = System.currentTimeMillis()
             ids.forEach { id ->
                 updateAppWidgetState(ctx, id) { prefs ->
@@ -134,22 +153,66 @@ class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                     prefs.remove(Keys.ERROR)
                 }
             }
-            widget.updateAll(ctx)
-            if (league == League.CFB) {
-                try { Alerts.check(ctx, games) } catch (e: Exception) { /* never let alerts break scores */ }
+            withTimeoutOrNull(20_000) { widget.updateAll(ctx) }
+            Status.success(ctx, league, fetched.size)
+
+            // Logos and alerts come after the scores are on screen.
+            withTimeoutOrNull(30_000) {
+                withContext(Dispatchers.IO) {
+                    Logos.ensure(ctx, fetched.flatMap { listOf(it.away, it.home) }.associate { it.logoKey to it.logoUrl })
+                }
+                widget.updateAll(ctx)
             }
-            Scheduler.scheduleFastIfNeeded(ctx, league, games, inputData.getBoolean(Scheduler.INPUT_FAST, false))
-            Result.success()
+            if (league == League.CFB) {
+                try { Alerts.check(ctx, fetched) } catch (e: Exception) { /* never let alerts break scores */ }
+            }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+            Status.failure(ctx, league, e)
             ids.forEach { id ->
                 updateAppWidgetState(ctx, id) { prefs ->
-                    prefs[Keys.ERROR] = "Offline"
+                    prefs[Keys.ERROR] = if (e is kotlinx.coroutines.TimeoutCancellationException) "Slow" else "Offline"
                     prefs[Keys.REFRESHING] = false
                 }
             }
-            widget.updateAll(ctx)
-            if (runAttemptCount < 2) Result.retry() else Result.success()
+            withTimeoutOrNull(20_000) { widget.updateAll(ctx) }
+        } finally {
+            // Keep the 2-minute live loop going even if this run failed: use the last good list.
+            val known = games ?: lastGames(ctx, ids.first())
+            try { Scheduler.scheduleFastIfNeeded(ctx, league, known, fast) } catch (e: Exception) { }
         }
+        return Result.success()
+    }
+
+    private suspend fun lastGames(ctx: Context, id: GlanceId): List<Game> = try {
+        val prefs = androidx.glance.appwidget.state.getAppWidgetState(
+            ctx, androidx.glance.state.PreferencesGlanceStateDefinition, id,
+        )
+        GameJson.decode(prefs[Keys.GAMES])
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+/** What the last refresh did, shown on the app's main screen to help diagnose problems. */
+object Status {
+    private fun p(ctx: Context) = ctx.getSharedPreferences("status", Context.MODE_PRIVATE)
+    fun attempt(ctx: Context, l: League) = p(ctx).edit().putLong("${l.key}_try", System.currentTimeMillis()).apply()
+    fun success(ctx: Context, l: League, n: Int) = p(ctx).edit()
+        .putLong("${l.key}_ok", System.currentTimeMillis()).putInt("${l.key}_n", n).remove("${l.key}_err").apply()
+    fun failure(ctx: Context, l: League, e: Exception) = p(ctx).edit()
+        .putString("${l.key}_err", (e::class.simpleName ?: "Error") + ": " + (e.message ?: "").take(80)).apply()
+
+    fun describe(ctx: Context, l: League): String {
+        val fmt = java.text.SimpleDateFormat("h:mm:ss a", java.util.Locale.getDefault())
+        val sp = p(ctx)
+        val tried = sp.getLong("${l.key}_try", 0)
+        val ok = sp.getLong("${l.key}_ok", 0)
+        val err = sp.getString("${l.key}_err", null)
+        if (tried == 0L) return "${l.shortTitle}: no refresh yet"
+        return "${l.shortTitle}: checked ${fmt.format(tried)}" +
+            (if (ok > 0) " · updated ${fmt.format(ok)} (${sp.getInt("${l.key}_n", 0)} games)" else "") +
+            (err?.let { " · last error: $it" } ?: "")
     }
 }
 

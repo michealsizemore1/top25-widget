@@ -16,6 +16,27 @@ import android.widget.Toast
 /** Small launcher screen: lets you pin the widget and explains how to resize it. */
 class MainActivity : Activity() {
 
+    private var statusView: TextView? = null
+    private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
+    private val tick = object : Runnable {
+        override fun run() {
+            statusView?.text = "REFRESH STATUS\n" + League.entries.joinToString("\n") { Status.describe(this@MainActivity, it) }
+            ticker.postDelayed(this, 2000)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Opening the app is also a refresh.
+        League.entries.forEach { Scheduler.refreshNow(this, it) }
+        ticker.post(tick)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ticker.removeCallbacks(tick)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val dp = resources.displayMetrics.density
@@ -99,6 +120,14 @@ class MainActivity : Activity() {
         button("Open Master App") {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)))
         }
+
+        // ---- Refresh status (helps spot a stuck widget)
+        statusView = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.parseColor("#9AA3A0"))
+            setPadding(0, px(16), 0, 0)
+        }
+        root.addView(statusView)
 
         root.addView(TextView(this).apply {
             text = "Version ${packageManager.getPackageInfo(packageName, 0).versionName}"
