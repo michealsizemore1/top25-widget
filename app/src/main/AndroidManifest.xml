@@ -26,7 +26,8 @@
             android:label="Game"
             android:launchMode="singleTop"
             android:taskAffinity=".game"
-            android:excludeFromRecents="true" />
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
         <receiver
             android:name=".ScoresWidgetReceiver"

@@ -112,6 +112,11 @@ class GameActivity : Activity() {
             }
             runOnUiThread {
                 if (isFinishing || id != gameId) return@runOnUiThread
+                // Don't rebuild the screen (and stop the video) while a highlight is playing.
+                if (quiet && videoPlaying) {
+                    if (isLive && visible) handler.postDelayed(autoRefresh, LIVE_REFRESH_MS)
+                    return@runOnUiThread
+                }
                 scoreboardLive = sbLive
                 if (result == null) {
                     if (!quiet) {
@@ -151,6 +156,7 @@ class GameActivity : Activity() {
             renderScoreHeader(away, home, state, type)
             renderLinescore(away, home)
         }
+        renderHighlights(j)
         renderScoringPlays(j)
         renderTeamStats(j, away, home)
         renderLeaders(j)
@@ -496,6 +502,98 @@ class GameActivity : Activity() {
             if (sub.isNotBlank()) addView(label(sub, C.muted, 13f))
         })
         loadHeadshot(a.headshot, photo)
+    }
+
+    // ------------------------------------------------------------------ highlights
+
+    private var videoPlaying = false
+    private val thumbs = HashMap<String, android.graphics.Bitmap>()
+
+    /** Up to 3 highlight videos: thumbnail with a play button; tap to play in place. */
+    private fun renderHighlights(j: JSONObject) {
+        val videos = j.optJSONArray("videos") ?: return
+        val clips = (0 until videos.length()).mapNotNull { i ->
+            val v = videos.optJSONObject(i) ?: return@mapNotNull null
+            val src = v.optJSONObject("links")?.optJSONObject("source")?.let { s ->
+                s.optJSONObject("HD")?.optString("href")?.takeIf { it.isNotBlank() }
+                    ?: s.optJSONObject("full")?.optString("href")?.takeIf { it.isNotBlank() }
+                    ?: s.optString("href").takeIf { it.isNotBlank() }
+            } ?: return@mapNotNull null
+            Triple(v.optString("headline").ifBlank { v.optString("title").ifBlank { "Game highlights" } },
+                v.optString("thumbnail"), src)
+        }.take(3)
+        if (clips.isEmpty()) return
+
+        val box = section("Game highlights")
+        val width = resources.displayMetrics.widthPixels - dp(28) - dp(28)
+        clips.forEachIndexed { i, (headline, thumb, src) ->
+            val frame = android.widget.FrameLayout(this).apply {
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, width * 9 / 16).apply { if (i > 0) topMargin = dp(14) }
+                background = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = dp(8).toFloat() }
+                clipToOutline = true
+            }
+            val image = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                layoutParams = android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            }
+            frame.addView(image)
+            frame.addView(label("▶", Color.WHITE, 26f).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(Color.parseColor("#AA000000"))
+                }
+                setPadding(dp(6), 0, 0, 0)
+                layoutParams = android.widget.FrameLayout.LayoutParams(dp(60), dp(60), Gravity.CENTER)
+            })
+            frame.setOnClickListener { playInPlace(frame, src) }
+            box.addView(frame)
+            box.addView(label(headline, C.muted, 14f).apply { setPadding(0, dp(6), 0, 0) })
+            loadImage(thumb, image, 720) { thumbs[thumb] = it }
+        }
+    }
+
+    private fun playInPlace(frame: android.widget.FrameLayout, src: String) {
+        frame.removeAllViews()
+        frame.setOnClickListener(null)
+        val video = android.widget.VideoView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT, Gravity.CENTER)
+        }
+        frame.addView(video)
+        val controls = android.widget.MediaController(this).apply { setAnchorView(video) }
+        video.setMediaController(controls)
+        video.setVideoURI(Uri.parse(src))
+        video.setOnPreparedListener { it.start(); videoPlaying = true }
+        video.setOnCompletionListener { videoPlaying = false }
+        video.setOnErrorListener { _, _, _ ->
+            videoPlaying = false
+            // Fall back to the phone's video player.
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(src), "video/mp4"))
+            } catch (e: Exception) { }
+            true
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        videoPlaying = false
+    }
+
+    private fun loadImage(url: String, into: ImageView, maxWidth: Int, onLoaded: (android.graphics.Bitmap) -> Unit) {
+        if (url.isBlank()) return
+        thumbs[url]?.let { into.setImageBitmap(it); return }
+        Thread {
+            val bmp = try {
+                val bytes = Http.get(url)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let {
+                    if (it.width <= maxWidth) it
+                    else android.graphics.Bitmap.createScaledBitmap(it, maxWidth, (maxWidth.toFloat() * it.height / it.width).toInt(), true)
+                }
+            } catch (e: Exception) {
+                null
+            } ?: return@Thread
+            runOnUiThread { onLoaded(bmp); into.setImageBitmap(bmp) }
+        }.start()
     }
 
     private fun loadHeadshot(url: String, into: ImageView) {

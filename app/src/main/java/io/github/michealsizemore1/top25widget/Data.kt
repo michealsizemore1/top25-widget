@@ -90,6 +90,7 @@ data class Game(
     val away: TeamLine,
     val home: TeamLine,
     val live: LiveInfo? = null,
+    val highlights: Int = 0,      // number of highlight videos ESPN has for this game
 ) {
     val isLive get() = state == "in"
     val isFinal get() = state == "post"
@@ -142,6 +143,7 @@ object EspnSource {
             away = away,
             home = home,
             live = if (state == "in") LiveInfo.from(comp, awayC, homeC, away, home) else null,
+            highlights = comp.optJSONArray("highlights")?.length() ?: 0,
         )
     }
 
@@ -261,6 +263,7 @@ object GameJson {
                 put("start", g.startMillis); put("network", g.network)
                 put("away", team(g.away)); put("home", team(g.home))
                 g.live?.let { put("live", LiveInfo.toJson(it)) }
+                put("hl", g.highlights)
             })
         }
     }.toString()
@@ -277,6 +280,7 @@ object GameJson {
                     network = o.optString("network"),
                     away = team(o.getJSONObject("away")), home = team(o.getJSONObject("home")),
                     live = LiveInfo.fromJson(o.optJSONObject("live")),
+                    highlights = o.optInt("hl", 0),
                 )
             }
         } catch (e: Exception) {

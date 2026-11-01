@@ -248,9 +248,13 @@ private fun GameCard(game: Game, narrow: Boolean, detailed: Boolean) {
             }
             Status(game, narrow)
         }
-        if (detailed && game.network.isNotBlank()) {
-            Spacer(modifier = GlanceModifier.height(4.dp))
-            Text(text = "TV: ${game.network}", style = style(Palette.dim, 13.sp))
+        val showTv = detailed && game.network.isNotBlank()
+        if (showTv || game.highlights > 0) {
+            Row(modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = if (showTv) "TV: ${game.network}" else "", style = style(Palette.dim, 13.sp),
+                    modifier = GlanceModifier.defaultWeight())
+                if (game.highlights > 0) Text(text = "▶ Highlights", style = style(Palette.accent, 13.sp, bold = true))
+            }
         }
     }
 }
