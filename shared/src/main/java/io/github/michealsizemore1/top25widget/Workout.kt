@@ -123,14 +123,18 @@ object Workouts {
      * Returns null for rest days. The day's text is kept as the notes.
      */
     fun fromPlanText(text: String): JSONObject? {
-        val t = text.lowercase(Locale.US)
+        // Skip a date heading line ("Tuesday, November 10") so its numbers aren't read as distances.
+        val lines = text.trim().lines()
+        val header = Regex("""^\W*(mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|day\s+\d|\d{4}-\d{2}-\d{2})""", RegexOption.IGNORE_CASE)
+        val t = (if (lines.size > 1 && header.containsMatchIn(lines[0]) && !Regex("""\b(mi|miles?)\b""", RegexOption.IGNORE_CASE).containsMatchIn(lines[0]))
+            lines.drop(1).joinToString("\n") else text).lowercase(Locale.US)
         val body = text.lines().drop(1).joinToString(" ").ifBlank { text }
         val hasRun = Regex("""\b(run|race|intervals?|repeats?|tempo|threshold|recovery|progression|easy|long|strides|fartlek|\d+(\.\d+)?\s*(mi|miles?|km))\b""").containsMatchIn(t)
         if (!hasRun || Regex("""\brest\s*day\b|\boff\b(?!\s*road)|\bno\s+run\b""").containsMatchIn(t) &&
             !Regex("""\d+(\.\d+)?\s*(mi|miles?)""").containsMatchIn(t)) return null
 
         val notes = text.trim()
-        fun miles(s: String) = Regex("""(\d+(?:\.\d+)?)\s*(?:-|to|–)?\s*(?:\d+(?:\.\d+)?)?\s*(?:mi\b|miles?\b)""").find(s)?.groupValues?.get(1)?.toDoubleOrNull()
+        fun miles(s: String) = Regex("""(\d+(?:\.\d+)?)(?:\s*(?:-|to|–)\s*\d+(?:\.\d+)?)?\s*(?:mi\b|miles?\b)""").find(s)?.groupValues?.get(1)?.toDoubleOrNull()
         val total = miles(t)
         val explicitZone = Regex("""\b(?:z|zone\s*)([1-5])\b""").find(t)?.groupValues?.get(1)?.toIntOrNull()
         val pace = Regex("""(\d{1,2}:\d{2})\s*(?:-|–|to)\s*(\d{1,2}:\d{2})""").find(t)?.let {

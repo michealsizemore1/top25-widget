@@ -21,7 +21,8 @@ class WorkoutParseTest {
     @Test fun recovery() { assertNotNull(show("Sunday, November 8\nRecovery run 4 miles")) }
     @Test fun timed() { assertNotNull(show("Friday, November 6\n5 x 3 min hard, 2 min easy jog, 6 miles total")) }
     @Test fun progression() { assertNotNull(show("Progression run 8 miles: last 3 faster")) }
-    @Test fun miles() { assertNotNull(show("Tuesday, November 10\n6 miles easy + 6 x 20 sec strides")) }
+    @Test fun miles() { assertEquals(9656, Workouts.flatten(show("Tuesday, November 10\n6 miles easy + 6 x 20 sec strides")!!)[0].optInt("value")) }
+    @Test fun range() { show("Friday, November 13\nEasy 5-6 miles") }
     @Test fun cross() { show("Cross-training 45 min or rest") }
     @Test fun hills() { show("Wednesday\nHill repeats: 6 x 90 sec uphill hard, jog down. 7 miles total") }
     @Test fun mpace() { assertEquals(3, Workouts.flatten(show("Thursday\n10 miles with middle 6 @ goal 50K pace 9:30/mi")!!).size) }
