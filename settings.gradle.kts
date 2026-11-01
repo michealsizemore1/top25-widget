@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Top25Widget"
 include(":app")
+include(":wear")

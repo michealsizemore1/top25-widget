@@ -40,6 +40,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    // Game data + parsing shared with the watch app.
+    sourceSets { getByName("main") { java.srcDir("../shared/src/main/java") } }
 }
 
 dependencies {

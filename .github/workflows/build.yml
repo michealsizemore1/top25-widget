@@ -24,15 +24,19 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Build APK
-        run: gradle :app:assembleDebug --no-daemon
+        run: gradle :app:assembleDebug :wear:assembleDebug --no-daemon
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Top25Widget.apk
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Top25Widget.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk Top25Watch.apk
 
       # Publishes the APK as a GitHub Release so you can download it straight from your phone
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Top 25 Widget (build ${{ github.run_number }})
-          files: Top25Widget.apk
+          files: |
+            Top25Widget.apk
+            Top25Watch.apk
           make_latest: true
