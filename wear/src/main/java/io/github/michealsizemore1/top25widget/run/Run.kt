@@ -23,7 +23,26 @@ object Run {
         val avgHr: Int, val avgPower: Int, val avgCadence: Int, val auto: Boolean,
     )
 
+    /** Stryd's power zones as a share of Critical Power. */
+    data class Zone(val number: Int, val name: String, val lo: Double, val hi: Double, val color: Int)
+    val ZONES = listOf(
+        Zone(1, "Easy", 0.65, 0.80, 0xFF7FA7D9.toInt()),
+        Zone(2, "Moderate", 0.80, 0.90, 0xFF46C46E.toInt()),
+        Zone(3, "Threshold", 0.90, 1.00, 0xFFF2C94C.toInt()),
+        Zone(4, "Interval", 1.00, 1.15, 0xFFFF8A3D.toInt()),
+        Zone(5, "Repetition", 1.15, 1.30, 0xFFE5484D.toInt()),
+    )
+
+    /** Zone index 0–4 for a power reading, or -1 with no Critical Power set / no power. */
+    fun zoneIndex(watts: Int, cp: Int = criticalPower): Int {
+        if (cp <= 0 || watts <= 0) return -1
+        val f = watts.toDouble() / cp
+        return ZONES.indexOfLast { f >= it.lo }.coerceAtLeast(0)
+    }
+
     // ---------------------------------------------------------------- settings
+    @Volatile var criticalPower = 0          // watts; 0 = not set
+    @Volatile var strydCalibration = 1.0     // multiplies Stryd distance and speed
     @Volatile var source = Source.STRYD
     @Volatile var autoPause = true
     @Volatile var recordGpsTrack = false   // with Stryd as source, GPS is optional (map only)
@@ -37,6 +56,7 @@ object Run {
     @Volatile var strydPower = 0            // watts
     @Volatile var strydTotalDistance: Double? = null   // meters, as the pod reports it
     @Volatile var strydLastUpdate = 0L
+    @Volatile var strydBattery = -1         // percent, -1 = unknown
     @Volatile var gpsFix = false
     @Volatile var gpsStatus = "Off"
     @Volatile var gpsSpeed = 0.0            // m/s
@@ -56,7 +76,13 @@ object Run {
     private val samples = ArrayList<IntArray>()  // per second: t, meters*10, hr, speed*100, cadence, power
     private val track = ArrayList<DoubleArray>() // lat, lon, t
     private val speedWindow = ArrayDeque<Double>()
-    private val powerWindow = ArrayDeque<Int>()
+    private val powerWindow = ArrayDeque<Int>()      // last 3 s
+    private val power10Window = ArrayDeque<Int>()    // last 10 s
+    private val power30Window = ArrayDeque<Int>()    // last 30 s, for normalized power
+    private var np4Sum = 0.0; private var np4Count = 0
+    val zoneSeconds = IntArray(5)
+    private var lapPowerSum = 0L; private var lapPowerCount = 0
+    var maxPower = 0; private set
     val laps = ArrayList<Lap>()
     private var lapStartSec = 0
     private var lapStartMeters = 0.0
@@ -103,6 +129,7 @@ object Run {
         fun avg(i: Int) = slice.map { it[i] }.filter { it > 0 }.let { if (it.isEmpty()) 0 else it.average().roundToInt() }
         laps += Lap(laps.size + 1, sec, distance - lapStartMeters, avg(2), avg(5), avg(4), auto)
         lapStartSec = movingSeconds; lapStartMeters = distance; lapSampleStart = samples.size
+        lapPowerSum = 0; lapPowerCount = 0
         onEvent?.invoke(if (auto) "lap_auto" else "lap")
         changed()
     }
@@ -123,6 +150,8 @@ object Run {
     private fun reset() {
         state = State.IDLE; startMillis = 0; movingSeconds = 0; distance = 0.0
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
+        power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
+        zoneSeconds.fill(0); lapPowerSum = 0; lapPowerCount = 0; maxPower = 0
         lapStartSec = 0; lapStartMeters = 0.0; lapSampleStart = 0; slowSeconds = 0
         hrSum = 0; hrCount = 0; maxHr = 0; powerSum = 0; powerCount = 0; cadSum = 0; cadCount = 0
         gpsPendingMeters = 0.0
@@ -146,7 +175,7 @@ object Run {
         if (strydConnected && now - strydLastUpdate > 5000) strydSpeed = 0.0
         if (now - gpsLastUpdate > 5000) gpsSpeed = 0.0
 
-        val speedNow = if (source == Source.STRYD) strydSpeed else gpsSpeed
+        val speedNow = if (source == Source.STRYD) strydSpeed * strydCalibration else gpsSpeed
 
         if (state == State.RUNNING || state == State.AUTO_PAUSED) {
             // Auto-pause: stopped for 4 seconds pauses; moving again resumes.
@@ -170,13 +199,24 @@ object Run {
                 val d = if (total != null && last != null && total >= last && total - last < 50) total - last
                         else strydSpeed          // no pod total (or it reset): speed × 1 second
                 lastStrydTotal = total
-                d
+                d * strydCalibration
             } else gpsPendingMeters
             gpsPendingMeters = 0.0
             distance += step
 
             speedWindow.addLast(speedNow); while (speedWindow.size > 5) speedWindow.removeFirst()
-            powerWindow.addLast(strydPower); while (powerWindow.size > 3) powerWindow.removeFirst()
+            val pw = strydPower
+            powerWindow.addLast(pw); while (powerWindow.size > 3) powerWindow.removeFirst()
+            power10Window.addLast(pw); while (power10Window.size > 10) power10Window.removeFirst()
+            power30Window.addLast(pw); while (power30Window.size > 30) power30Window.removeFirst()
+            if (power30Window.size == 30) {
+                val a = power30Window.average(); np4Sum += a * a * a * a; np4Count++
+            }
+            if (pw > 0) {
+                lapPowerSum += pw; lapPowerCount++
+                if (pw > maxPower) maxPower = pw
+                zoneIndex(pw).takeIf { it >= 0 }?.let { zoneSeconds[it]++ }
+            }
 
             val hr = heartRate
             if (hr > 0) { hrSum += hr; hrCount++; if (hr > maxHr) maxHr = hr }
@@ -204,6 +244,14 @@ object Run {
     val avgPower get() = if (powerCount == 0) 0 else (powerSum / powerCount).toInt()
     val avgCadence get() = if (cadCount == 0) 0 else (cadSum / cadCount).toInt()
     val avgSpeed get() = if (movingSeconds == 0) 0.0 else distance / movingSeconds
+    val power10s get() = if (power10Window.isEmpty()) strydPower else power10Window.average().roundToInt()
+    val lapPower get() = if (lapPowerCount == 0) 0 else (lapPowerSum / lapPowerCount).toInt()
+    /** Normalized power: 30 s rolling average, raised to the 4th power, averaged, 4th root. */
+    val normalizedPower get() = if (np4Count == 0) avgPower else Math.pow(np4Sum / np4Count, 0.25).roundToInt()
+    /** Intensity = normalized power ÷ Critical Power. */
+    val intensity get() = if (criticalPower <= 0 || normalizedPower <= 0) 0.0 else normalizedPower.toDouble() / criticalPower
+    /** Estimated stress: hours × intensity² × 100 (an hour at CP ≈ 100). */
+    val stress get() = (movingSeconds / 3600.0 * intensity * intensity * 100).roundToInt()
     val lapSeconds get() = movingSeconds - lapStartSec
     val lapMeters get() = distance - lapStartMeters
     val lapNumber get() = laps.size + 1
@@ -217,6 +265,12 @@ object Run {
         put("movingSeconds", movingSeconds); put("elapsedSeconds", ((endMillis - startMillis) / 1000).toInt())
         put("distance", distance)
         put("avgHr", avgHr); put("maxHr", maxHr); put("avgPower", avgPower); put("avgCadence", avgCadence)
+        put("maxPower", maxPower); put("np", normalizedPower)
+        if (criticalPower > 0) {
+            put("cp", criticalPower); put("intensity", intensity); put("stress", stress)
+            put("zoneSeconds", JSONArray(zoneSeconds.toList()))
+        }
+        if (source == Source.STRYD) put("calibration", strydCalibration)
         put("laps", JSONArray().apply {
             laps.forEach { l ->
                 put(JSONObject().apply {

@@ -43,10 +43,12 @@ class RunActivity : Activity() {
 
     private lateinit var root: FrameLayout
     private var screen = Screen.START
-    private var page = 1                 // 0 = controls, 1 = main, 2 = power, 3 = lap, 4 = averages
+    private var page = 1                 // 0 = controls, 1 = main, 2 = power, 3 = lap, 4 = averages, 5 = stress
     private var confirmingFinish = false
     private var summary: JSONObject? = null
-    private val pageCount = 5
+    private val pageCount = 6
+    /** While a number editor is open, the bezel adjusts it. */
+    private var editorRotary: ((Int) -> Unit)? = null
     private var lastRotary = 0L
     private val prefs by lazy { getSharedPreferences("run", 0) }
 
@@ -60,6 +62,8 @@ class RunActivity : Activity() {
         Run.source = if (prefs.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
         Run.autoPause = prefs.getBoolean("autoPause", true)
         Run.recordGpsTrack = prefs.getBoolean("track", false)
+        Run.criticalPower = prefs.getInt("cp", 0)
+        Run.strydCalibration = prefs.getFloat("cal", 1f).toDouble()
 
         if (!RunService.running) RunStore.recoverInterrupted(this)
         screen = if (Run.isActive) Screen.LIVE else Screen.START
@@ -105,7 +109,7 @@ class RunActivity : Activity() {
 
     private fun render() {
         when (screen) {
-            Screen.START -> if (Run.isActive) { screen = Screen.LIVE; renderLive() } else renderStart()
+            Screen.START -> if (Run.isActive) { screen = Screen.LIVE; renderLive() } else if (editorRotary == null) renderStart()
             Screen.LIVE -> renderLive()
             Screen.SUMMARY -> {}   // static; drawn once in finish()
         }
@@ -116,6 +120,7 @@ class RunActivity : Activity() {
     private var startBuilt = false
     private val startValues = HashMap<String, TextView>()
     private var trackRow: View? = null
+    private var calRow: View? = null
 
     private fun renderStart() {
         if (!startBuilt) buildStart()
@@ -123,14 +128,19 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
-        set("stryd", Run.strydStatus + if (Run.strydConnected && Run.strydPower > 0) " · ${Run.strydPower} W" else "",
-            if (Run.strydConnected) C.OK else C.MUTED)
+        set("stryd", Run.strydStatus +
+                (if (Run.strydConnected && Run.strydBattery >= 0) " · ${Run.strydBattery}%" else "") +
+                (if (Run.strydConnected && Run.strydPower > 0) " · ${Run.strydPower} W" else ""),
+            if (Run.strydConnected) (if (Run.strydBattery in 0..15) C.PAUSE else C.OK) else C.MUTED)
+        set("cp", if (Run.criticalPower > 0) "${Run.criticalPower} W ▸" else "Not set ▸", if (Run.criticalPower > 0) Color.WHITE else C.PAUSE)
+        set("cal", String.format(java.util.Locale.US, "%.3f ▸", Run.strydCalibration))
         val gpsNeeded = Run.source == Run.Source.GPS || Run.recordGpsTrack
         set("gps", if (gpsNeeded) Run.gpsStatus else "Off (not needed)", if (Run.gpsFix && gpsNeeded) C.OK else C.MUTED)
         set("hr", if (Run.heartRate > 0) "${Run.heartRate} bpm" else "Waiting…", if (Run.heartRate > 0) C.OK else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
+        calRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
 
         val ready = if (Run.source == Run.Source.STRYD) Run.strydConnected else Run.gpsFix
         startValues["startBtn"]?.apply {
@@ -153,7 +163,7 @@ class RunActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
             addView(label(title, C.MUTED, 11f))
             addView(label("", Color.WHITE, 14f, true).also { startValues[key] = it })
-            if (onTap != null) setOnClickListener { onTap(); renderStart() }
+            if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null) renderStart() }
         }
 
         col.addView(row("source", "Pace & distance") {
@@ -163,6 +173,18 @@ class RunActivity : Activity() {
         col.addView(row("stryd", "Stryd footpod (tap to re-pair)") {
             if (!Run.strydConnected) RunService.instance?.pairStryd()
         })
+        col.addView(row("cp", "Critical Power (zones)") {
+            editNumber("CRITICAL POWER", if (Run.criticalPower > 0) Run.criticalPower.toDouble() else 250.0,
+                1.0, 100.0, 600.0, { "${it.toInt()} W" }) {
+                Run.criticalPower = it.toInt(); prefs.edit().putInt("cp", Run.criticalPower).apply()
+            }
+        })
+        col.addView(row("cal", "Stryd calibration") {
+            editNumber("STRYD CALIBRATION", Run.strydCalibration, 0.005, 0.900, 1.100,
+                { String.format(java.util.Locale.US, "%.3f", it) }) {
+                Run.strydCalibration = it; prefs.edit().putFloat("cal", it.toFloat()).apply()
+            }
+        }.also { calRow = it })
         col.addView(row("gps", "GPS", null))
         col.addView(row("hr", "Heart rate", null))
         col.addView(row("autopause", "Auto-pause") {
@@ -193,6 +215,64 @@ class RunActivity : Activity() {
         root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
     }
 
+    /** Full-screen number picker: bezel or − / + to change, Save to keep. */
+    private fun editNumber(
+        title: String, initial: Double, step: Double, min: Double, max: Double,
+        format: (Double) -> String, onSave: (Double) -> Unit,
+    ) {
+        var value = initial.coerceIn(min, max)
+        val w = resources.displayMetrics.widthPixels
+        val col = column().apply {
+            gravity = Gravity.CENTER
+            setPadding(w / 8, w / 8, w / 8, w / 8)
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        }
+        col.addView(label(title, C.ACCENT, 12f, true).apply { letterSpacing = 0.1f })
+        val valueView = label(format(value), Color.WHITE, 34f, true)
+        fun change(steps: Int) {
+            value = (Math.round((value + steps * step) / step) * step).coerceIn(min, max)
+            valueView.text = format(value)
+        }
+        fun small(text: String, steps: Int) = label(text, Color.WHITE, 24f, true).apply {
+            background = rounded(C.CARD, 22)
+            setPadding(0, dp(4), 0, dp(4))
+            setOnClickListener { change(steps) }
+            setOnLongClickListener { change(steps * 10); true }
+        }
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(small("−", -1), LinearLayout.LayoutParams(dp(44), WRAP_CONTENT))
+            addView(valueView, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(small("+", 1), LinearLayout.LayoutParams(dp(44), WRAP_CONTENT))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+        })
+        col.addView(label("Turn bezel · hold ± for big steps", C.DIM, 10f).apply { setPadding(0, dp(4), 0, 0) })
+        fun close() { editorRotary = null; startBuilt = false; renderStart() }
+        col.addView(label("SAVE", Color.BLACK, 16f, true).apply {
+            background = rounded(C.ACCENT, 24)
+            setPadding(0, dp(10), 0, dp(10))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
+            setOnClickListener { onSave(value); close() }
+        })
+        col.addView(label("Cancel", C.MUTED, 13f, true).apply {
+            setPadding(0, dp(10), 0, 0)
+            setOnClickListener { close() }
+        })
+        editorRotary = { change(it) }
+        startBuilt = false
+        root.removeAllViews()
+        root.addView(col)
+        root.isFocusable = true; root.isFocusableInTouchMode = true; root.requestFocus()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Back (or swipe) from a number editor returns to the start screen without saving.
+        if (editorRotary != null) { editorRotary = null; startBuilt = false; renderStart(); return }
+        @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
     // ---------------------------------------------------------------- live pages
 
     private var liveBuilt = false
@@ -202,6 +282,7 @@ class RunActivity : Activity() {
     private lateinit var fieldC: Pair<TextView, TextView>
     private lateinit var fieldD: Pair<TextView, TextView>
     private lateinit var dataBox: LinearLayout
+    private lateinit var zoneBar: LinearLayout
     private lateinit var controlsBox: LinearLayout
     private lateinit var dots: TextView
     private lateinit var gestures: GestureDetector
@@ -240,6 +321,16 @@ class RunActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) }
         })
         dataBox.addView(d.apply { setPadding(0, dp(4), 0, 0) })
+        zoneBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+            Run.ZONES.forEach { z ->
+                addView(View(context).apply { background = rounded(z.color, 3) },
+                    LinearLayout.LayoutParams(0, dp(6), 1f).apply { marginStart = dp(2); marginEnd = dp(2) })
+            }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+        }
+        dataBox.addView(zoneBar)
         page.addView(dataBox)
 
         controlsBox = column().apply { visibility = View.GONE }
@@ -267,6 +358,11 @@ class RunActivity : Activity() {
 
     /** Turning the bezel also flips pages. */
     override fun onGenericMotionEvent(ev: MotionEvent): Boolean {
+        val ed = editorRotary
+        if (ed != null && ev.action == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER)) {
+            ed(if (-ev.getAxisValue(MotionEvent.AXIS_SCROLL) > 0) 1 else -1)
+            return true
+        }
         if (screen == Screen.LIVE && ev.action == MotionEvent.ACTION_SCROLL && ev.isFromSource(InputDevice.SOURCE_ROTARY_ENCODER)) {
             val now = System.currentTimeMillis()
             if (now - lastRotary > 350) {
@@ -303,9 +399,18 @@ class RunActivity : Activity() {
             Run.State.AUTO_PAUSED -> "AUTO-PAUSED"
             else -> null
         }
-        val pageName = when (page) { 1 -> "RUN"; 2 -> "POWER"; 3 -> "LAP ${Run.lapNumber}"; else -> "AVERAGES" }
+        val zi = Run.zoneIndex(Run.power3s)
+        val pageName = when (page) {
+            1 -> "RUN"
+            2 -> if (zi >= 0) "Z${zi + 1} · ${Run.ZONES[zi].name.uppercase()}" else "POWER"
+            3 -> "LAP ${Run.lapNumber}"
+            4 -> "AVERAGES"
+            else -> "STRESS"
+        }
         liveTitle.text = stateText ?: pageName
-        liveTitle.setTextColor(if (stateText != null) C.PAUSE else C.ACCENT)
+        liveTitle.setTextColor(if (stateText != null) C.PAUSE else if (page == 2 && zi >= 0) Run.ZONES[zi].color else C.ACCENT)
+        zoneBar.visibility = if (page == 2 && Run.criticalPower > 0) View.VISIBLE else View.GONE
+        if (page == 2) for (i in 0 until zoneBar.childCount) zoneBar.getChildAt(i).alpha = if (i == zi) 1f else 0.22f
 
         val hr = if (Run.heartRate > 0) "${Run.heartRate}" else "--"
         when (page) {
@@ -316,16 +421,26 @@ class RunActivity : Activity() {
                 show(fieldD, hr, "heart rate", 0xFFFF6B6B.toInt())
             }
             2 -> {
-                show(fieldA, if (Run.strydConnected) "${Run.power3s}" else "--", "watts (3s)", C.ACCENT)
-                show(fieldB, if (Run.avgPower > 0) "${Run.avgPower}" else "--", "avg W")
-                show(fieldC, if (Run.strydCadence > 0) "${Run.strydCadence}" else "--", "cadence")
-                show(fieldD, hr, "heart rate", 0xFFFF6B6B.toInt())
+                show(fieldA, if (Run.strydConnected) "${Run.power3s}" else "--", "watts (3s)",
+                    if (zi >= 0) Run.ZONES[zi].color else C.ACCENT)
+                show(fieldB, if (Run.strydConnected) "${Run.power10s}" else "--", "10s W")
+                show(fieldC, if (Run.lapPower > 0) "${Run.lapPower}" else "--", "lap W")
+                if (Run.criticalPower > 0) show(fieldD,
+                    if (Run.power3s > 0) "${(Run.power3s * 100.0 / Run.criticalPower).toInt()}%" else "--",
+                    "of CP (${Run.criticalPower} W)", if (zi >= 0) Run.ZONES[zi].color else Color.WHITE)
+                else show(fieldD, "--", "set CP for zones", C.MUTED)
             }
             3 -> {
                 show(fieldA, Run.clock(Run.lapSeconds), "lap time")
                 show(fieldB, Run.miles(Run.lapMeters), "lap mi")
                 show(fieldC, Run.paceFor(Run.lapSeconds, Run.lapMeters), "lap pace", C.ACCENT)
                 show(fieldD, Run.laps.lastOrNull()?.let { Run.clock(it.seconds) } ?: "--", "last lap")
+            }
+            5 -> {
+                show(fieldA, if (Run.criticalPower > 0) "${Run.stress}" else "--", "stress (est.)", C.ACCENT)
+                show(fieldB, if (Run.normalizedPower > 0) "${Run.normalizedPower}" else "--", "norm W")
+                show(fieldC, if (Run.intensity > 0) String.format(java.util.Locale.US, "%.2f", Run.intensity) else "--", "intensity")
+                show(fieldD, if (Run.strydCadence > 0) "${Run.strydCadence}" else "--", "cadence")
             }
             else -> {
                 show(fieldA, Run.pace(Run.avgSpeed), "avg pace /mi", C.ACCENT)

@@ -134,6 +134,49 @@ object RunViews {
             addView(stat("Source", if (json.optString("source") == "gps") "GPS" else "Stryd"))
         })
 
+        // Power: normalized power, intensity, stress, and time in each Stryd zone.
+        val np = json.optInt("np"); val cp = json.optInt("cp")
+        if (np > 0 || cp > 0) {
+            col.addView(label(ctx, "POWER", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
+            col.addView(card(ctx).apply {
+                if (np > 0) addView(stat("Normalized", "$np W"))
+                json.optInt("maxPower").takeIf { it > 0 }?.let { addView(stat("Max power", "$it W")) }
+                if (cp > 0) {
+                    addView(stat("Critical Power", "$cp W"))
+                    addView(stat("Intensity", String.format(Locale.US, "%.2f", json.optDouble("intensity"))))
+                    addView(stat("Stress (est.)", "${json.optInt("stress")}"))
+                }
+            })
+            val zs = json.optJSONArray("zoneSeconds")
+            val total = (0 until (zs?.length() ?: 0)).sumOf { zs!!.optInt(it) }
+            if (zs != null && total > 0) {
+                col.addView(label(ctx, "TIME IN ZONES", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
+                col.addView(card(ctx).apply {
+                    Run.ZONES.forEachIndexed { i, z ->
+                        val sec = zs.optInt(i)
+                        addView(LinearLayout(ctx).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
+                            addView(label(ctx, "Z${z.number}", z.color, 12f, true).apply {
+                                layoutParams = LinearLayout.LayoutParams(dp(ctx, 26), WRAP_CONTENT)
+                            })
+                            // Bar sized by share of time.
+                            addView(LinearLayout(ctx).apply {
+                                addView(View(ctx).apply { background = GradientDrawable().apply { setColor(z.color); cornerRadius = dp(ctx, 3).toFloat() } },
+                                    LinearLayout.LayoutParams(0, dp(ctx, 8), sec.toFloat().coerceAtLeast(0.001f)))
+                                addView(View(ctx), LinearLayout.LayoutParams(0, dp(ctx, 8), (total - sec).toFloat().coerceAtLeast(0.001f)))
+                            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                            addView(label(ctx, Run.clock(sec), Color.WHITE, 12f).apply {
+                                gravity = Gravity.END
+                                layoutParams = LinearLayout.LayoutParams(dp(ctx, 46), WRAP_CONTENT)
+                            })
+                        })
+                    }
+                })
+            }
+        }
+
         val laps = json.optJSONArray("laps")
         if (laps != null && laps.length() > 0) {
             col.addView(label(ctx, "SPLITS", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })

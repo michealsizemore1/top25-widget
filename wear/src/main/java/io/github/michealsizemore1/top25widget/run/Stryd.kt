@@ -35,6 +35,8 @@ class Stryd(private val ctx: Context) {
         val POWER_SERVICE: UUID = uuid16(0x1818)
         val POWER_MEASUREMENT: UUID = uuid16(0x2A63)
         val CCC_DESCRIPTOR: UUID = uuid16(0x2902)
+        val BATTERY_SERVICE: UUID = uuid16(0x180F)
+        val BATTERY_LEVEL: UUID = uuid16(0x2A19)
         private const val PREFS = "stryd"
 
         fun savedAddress(ctx: Context): String? = ctx.getSharedPreferences(PREFS, 0).getString("address", null)
@@ -170,10 +172,23 @@ class Stryd(private val ctx: Context) {
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
             handle(c.uuid, value)
         }
+
+        @Deprecated("Deprecated in Java")
+        override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int) {
+            @Suppress("DEPRECATION") if (status == BluetoothGatt.GATT_SUCCESS) handle(c.uuid, c.value ?: return)
+        }
+
+        override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) handle(c.uuid, value)
+        }
     }
 
     private fun enableNext(g: BluetoothGatt) {
-        val c = pendingNotify.removeFirstOrNull() ?: return
+        val c = pendingNotify.removeFirstOrNull() ?: run {
+            // Notifications are on; now read the pod's battery level once.
+            g.getService(BATTERY_SERVICE)?.getCharacteristic(BATTERY_LEVEL)?.let { g.readCharacteristic(it) }
+            return
+        }
         g.setCharacteristicNotification(c, true)
         val d = c.getDescriptor(CCC_DESCRIPTOR) ?: run { enableNext(g); return }
         if (Build.VERSION.SDK_INT >= 33) {
@@ -205,6 +220,7 @@ class Stryd(private val ctx: Context) {
                 Run.strydCadence = cadence
                 Run.strydLastUpdate = now
             }
+            BATTERY_LEVEL -> if (b.isNotEmpty()) Run.strydBattery = u8(b, 0).coerceIn(0, 100)
             POWER_MEASUREMENT -> if (b.size >= 4) {
                 Run.strydPower = s16(b, 2).coerceAtLeast(0)
                 Run.strydLastUpdate = now
