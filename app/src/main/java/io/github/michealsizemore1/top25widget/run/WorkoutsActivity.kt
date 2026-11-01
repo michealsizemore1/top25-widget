@@ -61,11 +61,14 @@ class WorkoutsActivity : Activity() {
         fun dp(v: Int) = RunUi.dp(ctx, v)
         val plan = WorkoutStore.plan(this)
         col.addView(RunUi.text(this,
-            "Today's workout loads on the watch automatically. To bring in your Command Center plan, open it and tap " +
+            "Workouts go to the watch automatically (the next 6 weeks of the plan plus your library). On the watch, " +
+            "today's workout is preloaded on the Run screen; tap Workout to pick another day this week or a library workout. " +
+            "To bring in your Command Center plan, open it and tap " +
             "“Send plan to Running app” under Upcoming / Active Training Plan.", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(12), dp(4), 0) })
         col.addView(RunUi.button(this, "+ Add a workout to a date", RunUi.CARD, Color.WHITE) { pickDateThenWorkout() }.apply {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
         })
+        watchStatus(col)
 
         val cal = Calendar.getInstance()
         val day = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
@@ -110,6 +113,44 @@ class WorkoutsActivity : Activity() {
                 }.show()
             true
         }
+    }
+
+    /** Shows what the watch has confirmed receiving, with a button to send again. */
+    private fun watchStatus(col: LinearLayout) {
+        val ctx = this
+        fun dp(v: Int) = RunUi.dp(ctx, v)
+        val status = RunUi.text(this, "Watch: checking…", RunUi.MUTED, 13f)
+        col.addView(RunUi.card(this).apply {
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(status, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                addView(RunUi.button(ctx, "Send to watch", RunUi.ACCENT) {
+                    WorkoutStore.pushToWatch(ctx)
+                    status.text = "Sending… open Run on the watch if it doesn't update in a minute"
+                    android.os.Handler(mainLooper).postDelayed({ readWatchStatus(status) }, 8000)
+                })
+            })
+        })
+        readWatchStatus(status)
+    }
+
+    private fun readWatchStatus(view: android.widget.TextView) {
+        val ctx = this
+        Thread {
+            val text = try {
+                val items = com.google.android.gms.tasks.Tasks.await(com.google.android.gms.wearable.Wearable.getDataClient(ctx)
+                    .getDataItems(android.net.Uri.parse("wear://*/watchinfo")))
+                val m = items.map { com.google.android.gms.wearable.DataMapItem.fromDataItem(it).dataMap }.firstOrNull()
+                items.release()
+                when {
+                    m == null -> "Watch hasn't confirmed yet. Open Run on the watch once."
+                    m.getLong("receivedAt") == 0L -> "Watch hasn't received workouts yet."
+                    else -> "✓ Watch has ${m.getInt("planDays")} planned days + ${m.getInt("library")} library workouts\n" +
+                        "updated " + SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(java.util.Date(m.getLong("receivedAt")))
+                }
+            } catch (e: Exception) { "Watch not connected" }
+            runOnUiThread { view.text = text }
+        }.start()
     }
 
     private fun renderLibrary(col: LinearLayout) {

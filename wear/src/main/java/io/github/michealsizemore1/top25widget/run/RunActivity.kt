@@ -345,7 +345,14 @@ class RunActivity : Activity() {
         fun outline(x: org.json.JSONObject) =
             io.github.michealsizemore1.top25widget.Workouts.outline(x, Run.hrMax, Run.hrRest, Run.criticalPower).take(3).joinToString(" · ")
         col.addView(item("Free run", "No targets", null))
-        WatchWorkouts.today(this)?.let { col.addView(item("Today: " + it.optString("name"), outline(it), it)) }
+        // Today and the rest of the week from the plan.
+        val dayName = java.text.SimpleDateFormat("EEE M/d", java.util.Locale.getDefault())
+        val keyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        WatchWorkouts.upcoming(this, 7).forEachIndexed { i, (d, wk) ->
+            val label = if (d == keyFmt.format(java.util.Date())) "Today" else (keyFmt.parse(d)?.let { dayName.format(it) } ?: d)
+            col.addView(item("$label: " + wk.optString("name"), outline(wk), wk))
+        }
+        if (WatchWorkouts.library(this).isNotEmpty()) col.addView(label("LIBRARY", C.MUTED, 10f, true).apply { setPadding(0, dp(10), 0, 0) })
         WatchWorkouts.library(this).forEach { col.addView(item(it.optString("name"), outline(it), it)) }
         if (WatchWorkouts.library(this).isEmpty())
             col.addView(label("Build workouts in the phone's Running app — they show up here.", C.DIM, 11f).apply { setPadding(0, dp(10), 0, 0) })

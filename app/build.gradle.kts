@@ -12,7 +12,7 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
+        versionCode = 26
         versionName = "5.0 · build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 

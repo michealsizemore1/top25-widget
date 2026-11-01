@@ -28,7 +28,13 @@ object RunSync {
         Thread {
             try {
                 val v = app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: ""
-                val req = PutDataMapRequest.create("/watchinfo").apply { dataMap.putString("version", v) }.asPutDataRequest()
+                // Also confirms what the watch has received, shown on the phone's Workouts screen.
+                val req = PutDataMapRequest.create("/watchinfo").apply {
+                    dataMap.putString("version", v)
+                    dataMap.putInt("planDays", WatchWorkouts.planCount(app))
+                    dataMap.putInt("library", WatchWorkouts.library(app).size)
+                    dataMap.putLong("receivedAt", WatchWorkouts.receivedAt(app))
+                }.asPutDataRequest().setUrgent()
                 com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(app).putDataItem(req))
             } catch (e: Exception) { }
         }.start()
@@ -68,6 +74,20 @@ object WatchWorkouts {
     /** Planned workout for a date (yyyy-MM-dd), with the plan's text in its notes. */
     fun planFor(ctx: Context, date: String): org.json.JSONObject? = load(ctx).optJSONObject("plan")?.optJSONObject(date)
 
+    fun planCount(ctx: Context) = load(ctx).optJSONObject("plan")?.length() ?: 0
+    fun receivedAt(ctx: Context) = file(ctx).takeIf { it.exists() }?.lastModified() ?: 0L
+
+    /** The next [days] planned days from today: (date, workout). */
+    fun upcoming(ctx: Context, days: Int): List<Pair<String, org.json.JSONObject>> {
+        val plan = load(ctx).optJSONObject("plan") ?: return emptyList()
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val cal = java.util.Calendar.getInstance()
+        return (0 until days).mapNotNull {
+            val d = f.format(cal.time); cal.add(java.util.Calendar.DAY_OF_MONTH, 1)
+            plan.optJSONObject(d)?.let { w -> d to w }
+        }
+    }
+
     fun today(ctx: Context) = planFor(ctx, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()))
 }
 
@@ -80,6 +100,7 @@ class RunSettingsListener : WearableListenerService() {
                     val asset = DataMapItem.fromDataItem(e.dataItem).dataMap.getAsset("data") ?: return@forEach
                     val input = com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(this).getFdForAsset(asset)).inputStream
                     WatchWorkouts.save(this, java.util.zip.GZIPInputStream(input).use { it.readBytes().toString(Charsets.UTF_8) })
+                    RunSync.reportVersion(this)   // tell the phone it arrived
                 } catch (ex: Exception) { }
                 return@forEach
             }
