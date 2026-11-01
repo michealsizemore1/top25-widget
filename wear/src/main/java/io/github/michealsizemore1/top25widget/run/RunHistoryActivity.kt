@@ -166,6 +166,7 @@ object RunViews {
             json.optInt("avgPower").takeIf { it > 0 }?.let { addView(stat("Avg power", "$it W")) }
             json.optInt("avgCadence").takeIf { it > 0 }?.let { addView(stat("Avg cadence", "$it spm")) }
             addView(stat("Source", if (json.optString("source") == "gps") "GPS" else "Stryd"))
+            if (json.has("hrSource")) addView(stat("Heart rate", if (json.optString("hrSource") == "strap") "Chest strap" else "Wrist"))
         })
 
         zoneCard(ctx, col, "HEART-RATE ZONES", json.optJSONArray("hrZoneSeconds"), Run.HR_ZONE_NAMES)

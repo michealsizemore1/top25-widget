@@ -140,7 +140,16 @@ class RunActivity : Activity() {
         set("cal", String.format(java.util.Locale.US, "%.3f ▸", Run.strydCalibration))
         val gpsNeeded = Run.source == Run.Source.GPS || Run.recordGpsTrack
         set("gps", if (gpsNeeded) Run.gpsStatus else "Off (not needed)", if (Run.gpsFix && gpsNeeded) C.OK else C.MUTED)
-        set("hr", if (Run.heartRate > 0) "${Run.heartRate} bpm" else "Waiting…", if (Run.heartRate > 0) C.OK else C.MUTED)
+        val hrText = when {
+            Run.strapActive -> "${Run.strapStatus} · ${Run.heartRate} bpm" +
+                (if (Run.strapBattery >= 0) " · ${Run.strapBattery}%" else "")
+            Run.strapConnected && !Run.strapContact -> "Strap: wet the pads / no skin contact"
+            Run.heartRate > 0 -> "Wrist · ${Run.heartRate} bpm" +
+                (if (Run.strapStatus.startsWith("Searching") || Run.strapStatus.startsWith("Connecting") ||
+                     Run.strapStatus.startsWith("Reconnecting")) " · strap: ${Run.strapStatus}" else "")
+            else -> "Waiting… · strap: ${Run.strapStatus}"
+        }
+        set("hr", hrText, if (Run.strapActive) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
@@ -199,7 +208,9 @@ class RunActivity : Activity() {
             }
         }.also { calRow = it })
         col.addView(row("gps", "GPS", null))
-        col.addView(row("hr", "Heart rate", null))
+        col.addView(row("hr", "Heart rate (tap to pair chest strap)") {
+            if (!Run.strapActive) RunService.instance?.pairStrap()
+        })
         col.addView(row("autopause", "Auto-pause") {
             Run.autoPause = !Run.autoPause; prefs.edit().putBoolean("autoPause", Run.autoPause).apply()
         })

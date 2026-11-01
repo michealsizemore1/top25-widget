@@ -68,6 +68,21 @@ object Run {
 
     // ---------------------------------------------------------------- live sensor readings
     @Volatile var heartRate = 0
+    @Volatile var wristLastUpdate = 0L
+    @Volatile var strapConnected = false
+    @Volatile var strapStatus = "Not paired"
+    @Volatile var strapLastUpdate = 0L
+    @Volatile var strapContact = true
+    @Volatile var strapBattery = -1
+    /** True while the chest strap is sending — its reading wins over the wrist. */
+    val strapActive get() = strapConnected && System.currentTimeMillis() - strapLastUpdate < 5000
+    private val rr = ArrayList<Int>()        // beat-to-beat intervals (ms) from the strap, for HRV
+    private var strapSeconds = 0
+
+    /** R-R interval from the strap. */
+    fun onRr(ms: Int) {
+        if (state == State.RUNNING && ms in 250..2000) synchronized(rr) { rr += ms }
+    }
     @Volatile var strydConnected = false
     @Volatile var strydStatus = "Not paired"
     @Volatile var strydSpeed = 0.0          // m/s
@@ -175,6 +190,7 @@ object Run {
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
         power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
         zoneSeconds.fill(0); lapPowerSum = 0; lapPowerCount = 0; maxPower = 0
+        synchronized(rr) { rr.clear() }; strapSeconds = 0
         hrZoneSeconds.fill(0); lapHrSum = 0; lapHrCount = 0; strideSum = 0.0; strideCount = 0
         lapStartSec = 0; lapStartMeters = 0.0; lapSampleStart = 0; slowSeconds = 0
         hrSum = 0; hrCount = 0; maxHr = 0; powerSum = 0; powerCount = 0; cadSum = 0; cadCount = 0
@@ -198,6 +214,7 @@ object Run {
         val now = System.currentTimeMillis()
         if (strydConnected && now - strydLastUpdate > 5000) strydSpeed = 0.0
         if (now - gpsLastUpdate > 5000) gpsSpeed = 0.0
+        if (now - strapLastUpdate > 10_000 && now - wristLastUpdate > 10_000) heartRate = 0
 
         val speedNow = if (source == Source.STRYD) strydSpeed * strydCalibration else gpsSpeed
 
@@ -243,6 +260,7 @@ object Run {
             }
 
             val hr = heartRate
+            if (strapActive) strapSeconds++
             if (hr > 0) {
                 hrSum += hr; hrCount++; if (hr > maxHr) maxHr = hr
                 lapHrSum += hr; lapHrCount++
@@ -303,6 +321,8 @@ object Run {
         }
         if (source == Source.STRYD) put("calibration", strydCalibration)
         put("hrMax", hrMax); put("hrRest", hrRest)
+        put("hrSource", if (movingSeconds > 0 && strapSeconds * 2 >= movingSeconds) "strap" else "wrist")
+        synchronized(rr) { if (rr.isNotEmpty()) put("rr", JSONArray(rr.toList())) }
         put("hrZoneSeconds", JSONArray(hrZoneSeconds.toList()))
         if (avgStride > 0) put("avgStride", avgStride)
         put("laps", JSONArray().apply {

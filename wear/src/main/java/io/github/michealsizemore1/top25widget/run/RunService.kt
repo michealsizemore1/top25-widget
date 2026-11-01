@@ -56,6 +56,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private var stryd: Stryd? = null
+    private var strap: HrStrap? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastLocation: Location? = null
     private var gpsOn = false
@@ -92,7 +93,8 @@ class RunService : Service(), SensorEventListener, LocationListener {
         // Stryd footpod.
         if (Build.VERSION.SDK_INT < 31 || has(this, Manifest.permission.BLUETOOTH_CONNECT)) {
             stryd = Stryd(this).also { it.start() }
-        } else Run.strydStatus = "Allow Nearby devices"
+            strap = HrStrap(this).also { it.start() }
+        } else { Run.strydStatus = "Allow Nearby devices"; Run.strapStatus = "Allow Nearby devices" }
 
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Scores:run").apply { acquire(4 * 60 * 60 * 1000L) }
@@ -109,6 +111,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
         instance = null
         handler.removeCallbacksAndMessages(null)
         stryd?.stop(); stryd = null
+        strap?.stop(); strap = null
         getSystemService(SensorManager::class.java).unregisterListener(this)
         stopGps()
         Run.onEvent = null
@@ -118,6 +121,9 @@ class RunService : Service(), SensorEventListener, LocationListener {
 
     /** Re-pair the Stryd (called from the start screen). */
     fun pairStryd() { stryd?.pairNew() }
+
+    /** Re-pair the chest strap (called from the start screen). */
+    fun pairStrap() { strap?.pairNew() }
 
     // ---------------------------------------------------------------- foreground + ongoing activity
 
@@ -159,7 +165,10 @@ class RunService : Service(), SensorEventListener, LocationListener {
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type == Sensor.TYPE_HEART_RATE) {
             val bpm = event.values.firstOrNull()?.toInt() ?: 0
-            if (event.accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_LOW && bpm in 30..230) Run.heartRate = bpm
+            if (event.accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_LOW && bpm in 30..230) {
+                Run.wristLastUpdate = System.currentTimeMillis()
+                if (!Run.strapActive) Run.heartRate = bpm   // the chest strap wins when it's sending
+            }
         }
     }
 
