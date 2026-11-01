@@ -22,6 +22,7 @@ class RunsActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) return
         handleStravaRedirect(intent)
     }
 

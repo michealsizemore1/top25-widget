@@ -43,6 +43,7 @@ class WatchActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) return
         val w = resources.displayMetrics.widthPixels
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

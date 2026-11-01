@@ -32,8 +32,8 @@ jobs:
 
       - name: Rename APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Top25Widget.apk
-          cp wear/build/outputs/apk/debug/wear-debug.apk Top25Watch.apk
+          cp app/build/outputs/apk/debug/app-debug.apk PHONE-install-on-phone.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk WATCH-install-on-watch.apk
 
       # Publishes the APK as a GitHub Release so you can download it straight from your phone
       - uses: softprops/action-gh-release@v2
@@ -41,6 +41,6 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: Top 25 Widget (build ${{ github.run_number }})
           files: |
-            Top25Widget.apk
-            Top25Watch.apk
+            PHONE-install-on-phone.apk
+            WATCH-install-on-watch.apk
           make_latest: true

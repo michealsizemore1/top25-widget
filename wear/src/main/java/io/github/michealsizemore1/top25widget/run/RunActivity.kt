@@ -60,6 +60,7 @@ class RunActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) return
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
 

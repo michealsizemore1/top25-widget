@@ -12,7 +12,8 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 26
         targetSdk = 35
-        versionCode = maxOf(26, System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
+        // Always above the watch app (100000+), so the watch file can never install over the phone app.
+        versionCode = 200000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
         versionName = "5.0 · build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 
