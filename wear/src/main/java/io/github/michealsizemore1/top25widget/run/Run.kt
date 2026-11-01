@@ -67,6 +67,8 @@ object Run {
     @Volatile var recordGpsTrack = false   // with Stryd as source, GPS is optional (map only)
 
     // ---------------------------------------------------------------- live sensor readings
+    /** true = chest strap when it's there (wrist as backup); false = wrist sensor only. */
+    @Volatile var useStrap = true
     @Volatile var heartRate = 0
     @Volatile var wristLastUpdate = 0L
     @Volatile var strapConnected = false
@@ -75,7 +77,7 @@ object Run {
     @Volatile var strapContact = true
     @Volatile var strapBattery = -1
     /** True while the chest strap is sending — its reading wins over the wrist. */
-    val strapActive get() = strapConnected && System.currentTimeMillis() - strapLastUpdate < 5000
+    val strapActive get() = useStrap && strapConnected && System.currentTimeMillis() - strapLastUpdate < 5000
     private val rr = ArrayList<Int>()        // beat-to-beat intervals (ms) from the strap, for HRV
     private var strapSeconds = 0
 

@@ -62,6 +62,7 @@ class RunActivity : Activity() {
         Run.source = if (prefs.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
         Run.autoPause = prefs.getBoolean("autoPause", true)
         Run.recordGpsTrack = prefs.getBoolean("track", false)
+        Run.useStrap = prefs.getBoolean("useStrap", true)
         Run.criticalPower = prefs.getInt("cp", 333)
         Run.hrMax = prefs.getFloat("hrMax", 185f).toDouble()
         Run.hrRest = prefs.getFloat("hrRest", 43.5f).toDouble()
@@ -140,7 +141,9 @@ class RunActivity : Activity() {
         set("cal", String.format(java.util.Locale.US, "%.3f ▸", Run.strydCalibration))
         val gpsNeeded = Run.source == Run.Source.GPS || Run.recordGpsTrack
         set("gps", if (gpsNeeded) Run.gpsStatus else "Off (not needed)", if (Run.gpsFix && gpsNeeded) C.OK else C.MUTED)
+        set("hrmode", if (Run.useStrap) "Chest strap + wrist backup ▸" else "Wrist only ▸", C.ACCENT)
         val hrText = when {
+            !Run.useStrap -> if (Run.heartRate > 0) "Wrist · ${Run.heartRate} bpm" else "Waiting for wrist…"
             Run.strapActive -> "${Run.strapStatus} · ${Run.heartRate} bpm" +
                 (if (Run.strapBattery >= 0) " · ${Run.strapBattery}%" else "")
             Run.strapConnected && !Run.strapContact -> "Strap: wet the pads / no skin contact"
@@ -149,7 +152,7 @@ class RunActivity : Activity() {
                      Run.strapStatus.startsWith("Reconnecting")) " · strap: ${Run.strapStatus}" else "")
             else -> "Waiting… · strap: ${Run.strapStatus}"
         }
-        set("hr", hrText, if (Run.strapActive) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
+        set("hr", hrText, if (Run.strapActive || (!Run.useStrap && Run.heartRate > 0)) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
@@ -208,8 +211,13 @@ class RunActivity : Activity() {
             }
         }.also { calRow = it })
         col.addView(row("gps", "GPS", null))
-        col.addView(row("hr", "Heart rate (tap to pair chest strap)") {
-            if (!Run.strapActive) RunService.instance?.pairStrap()
+        col.addView(row("hrmode", "Heart-rate sensor") {
+            Run.useStrap = !Run.useStrap
+            prefs.edit().putBoolean("useStrap", Run.useStrap).apply()
+            RunService.instance?.applyHrMode()
+        })
+        col.addView(row("hr", "Heart rate (tap to re-pair strap)") {
+            if (Run.useStrap && !Run.strapActive) RunService.instance?.pairStrap()
         })
         col.addView(row("autopause", "Auto-pause") {
             Run.autoPause = !Run.autoPause; prefs.edit().putBoolean("autoPause", Run.autoPause).apply()

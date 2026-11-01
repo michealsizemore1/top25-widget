@@ -93,7 +93,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
         // Stryd footpod.
         if (Build.VERSION.SDK_INT < 31 || has(this, Manifest.permission.BLUETOOTH_CONNECT)) {
             stryd = Stryd(this).also { it.start() }
-            strap = HrStrap(this).also { it.start() }
+            if (Run.useStrap) strap = HrStrap(this).also { it.start() }
         } else { Run.strydStatus = "Allow Nearby devices"; Run.strapStatus = "Allow Nearby devices" }
 
         wakeLock = getSystemService(PowerManager::class.java)
@@ -123,7 +123,18 @@ class RunService : Service(), SensorEventListener, LocationListener {
     fun pairStryd() { stryd?.pairNew() }
 
     /** Re-pair the chest strap (called from the start screen). */
-    fun pairStrap() { strap?.pairNew() }
+    fun pairStrap() { strap?.pairNew() ?: applyHrMode() }
+
+    /** Turn the strap connection on or off to match the heart-rate setting. */
+    fun applyHrMode() {
+        if (Run.useStrap && strap == null &&
+            (Build.VERSION.SDK_INT < 31 || has(this, Manifest.permission.BLUETOOTH_CONNECT))) {
+            strap = HrStrap(this).also { it.start() }
+        } else if (!Run.useStrap) {
+            strap?.stop(); strap = null
+            Run.strapStatus = "Off (wrist only)"
+        }
+    }
 
     // ---------------------------------------------------------------- foreground + ongoing activity
 
