@@ -103,6 +103,8 @@ class RunReceiverService : WearableListenerService() {
                 Tasks.await(Wearable.getDataClient(this).deleteDataItems(item.uri))
                 if (isNew) {
                     notifyRun(json)
+                    // Stryd first (its metrics go in the Strava description), then Strava.
+                    if (StrydCloud.autoFetch(this) && StrydCloud.connected(this)) StrydWorker.enqueue(this, json.optLong("start"))
                     if (Strava.autoUpload(this) && Strava.connected(this)) StravaWorker.enqueue(this, json.optLong("start"))
                 }
             } catch (e: Exception) { android.util.Log.w("RunReceiver", "run sync failed", e) }

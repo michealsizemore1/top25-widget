@@ -39,6 +39,17 @@ object Summary {
                 RunMath.paceFor(l.optInt("sec"), l.optDouble("m")) + (l.optInt("hr").takeIf { it > 0 }?.let { "@$it" } ?: "")
             }
         }
+        run.optJSONObject("stryd")?.let { s ->
+            val parts = listOfNotNull(
+                s.optDouble("groundTime").takeIf { !it.isNaN() }?.let { "GCT ${it.toInt()} ms" },
+                s.optDouble("oscillation").takeIf { !it.isNaN() }?.let { "VO %.1f cm".format(Locale.US, it) },
+                s.optDouble("legSpring").takeIf { !it.isNaN() }?.let { "LSS %.1f kN/m".format(Locale.US, it) },
+                s.optDouble("formPower").takeIf { !it.isNaN() }?.let { "Form power ${it.toInt()} W" },
+                s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { "Air power %.1f%%".format(Locale.US, it) },
+                s.optDouble("rss").takeIf { !it.isNaN() }?.let { "RSS ${it.toInt()}" },
+            )
+            if (parts.isNotEmpty()) lines += "Stryd: " + parts.joinToString(" · ")
+        }
         if (!forStrava) lines += "Recorded on Galaxy Watch (" + (if (run.optString("source") == "gps") "GPS" else "Stryd") + " pace/distance)"
         return lines.joinToString("\n")
     }
@@ -65,6 +76,13 @@ object CommandCenter {
             put("cadence", run.optInt("avgCadence"))
             put("notes", Summary.notes(ctx, run))
             put("source", "watch")
+            run.optJSONObject("stryd")?.let { s ->
+                s.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
+                s.optDouble("temp").takeIf { !it.isNaN() }?.let { put("temp", Math.round(it * 9 / 5 + 32).toString()) }
+                s.optDouble("humidity").takeIf { !it.isNaN() }?.let { put("humidity", Math.round(it)) }
+                s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { put("airPower", it) }
+                s.optDouble("rss").takeIf { !it.isNaN() }?.let { put("rss", it.toInt()) }
+            }
             PhoneRuns.stravaId(ctx, start).takeIf { it > 0 }?.let { put("routeUrl", "https://www.strava.com/activities/$it") }
         }
     }

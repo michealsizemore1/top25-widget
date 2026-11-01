@@ -29,6 +29,7 @@ object RunUi {
     const val POWER = 0xFFFFB547.toInt()
     const val STRAVA = 0xFFFC4C02.toInt()
     const val CC = 0xFF7B61FF.toInt()
+    const val STRYD = 0xFF50555E.toInt()
 
     fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
 

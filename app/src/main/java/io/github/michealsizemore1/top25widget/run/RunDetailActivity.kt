@@ -88,6 +88,44 @@ class RunDetailActivity : Activity() {
             col.addView(RunUi.text(this, "Last Strava try: $it", RunUi.STRAVA, 12f).apply { setPadding(dp(4), dp(6), 0, 0) })
         }
 
+        // Stryd metrics (from your Stryd account).
+        col.addView(RunUi.section(this, "STRYD"))
+        val s = run.optJSONObject("stryd")
+        if (s != null) {
+            fun d(k: String) = s.optDouble(k).takeIf { !it.isNaN() }
+            col.addView(RunUi.card(this).apply {
+                addView(RunUi.statGrid(ctx, listOfNotNull(
+                    d("groundTime")?.let { Triple("${it.toInt()}", "ground time ms", Color.WHITE) },
+                    d("oscillation")?.let { Triple("%.1f".format(Locale.US, it), "oscillation cm", Color.WHITE) },
+                    d("legSpring")?.let { Triple("%.1f".format(Locale.US, it), "leg spring kN/m", Color.WHITE) },
+                    d("stride")?.let { Triple("%.2f".format(Locale.US, it), "stride m", Color.WHITE) },
+                    d("verticalRatio")?.let { Triple("%.1f".format(Locale.US, it), "vertical ratio %", Color.WHITE) },
+                    d("formPower")?.let { Triple("${it.toInt()}", "form power W", RunUi.POWER) },
+                    d("airPowerPct")?.let { Triple("%.1f%%".format(Locale.US, it), "air power", RunUi.POWER) },
+                    d("rss")?.let { Triple("${it.toInt()}", "RSS", RunUi.ACCENT) },
+                    d("cp")?.let { Triple("${it.toInt()}", "Stryd CP W", RunUi.POWER) },
+                    d("elevGain")?.let { Triple("${Math.round(it * 3.28084)}", "elev gain ft", Color.WHITE) },
+                    d("temp")?.let { Triple("${Math.round(it * 9 / 5 + 32)}°", "temp °F", Color.WHITE) },
+                    d("humidity")?.let { Triple("${it.toInt()}%", "humidity", Color.WHITE) },
+                )))
+                addView(RunUi.text(ctx, "Refresh from Stryd", RunUi.MUTED, 13f, true).apply {
+                    setPadding(0, dp(8), 0, 0); setOnClickListener { fetchStryd() }
+                })
+            })
+        } else if (StrydCloud.connected(this)) {
+            col.addView(RunUi.card(this).apply {
+                addView(RunUi.text(ctx, "Not found in Stryd yet. Open the Stryd app so the pod syncs, then tap below " +
+                    "(the phone also keeps checking on its own for a few hours).", RunUi.MUTED, 13f))
+                addView(RunUi.button(ctx, "Get Stryd data", RunUi.STRYD, Color.WHITE) { fetchStryd() }.apply {
+                    layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(10) }
+                })
+            })
+        } else {
+            col.addView(RunUi.button(this, "Connect Stryd for ground time, oscillation, leg spring, RSS…", RunUi.STRYD, Color.WHITE) {
+                startActivity(Intent(ctx, RunSettingsActivity::class.java))
+            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
+        }
+
         // Charts.
         val samples = run.optJSONArray("samples")
         if (samples != null && samples.length() > 10) {
@@ -184,6 +222,26 @@ class RunDetailActivity : Activity() {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
+    }
+
+    private fun fetchStryd() {
+        Toast.makeText(this, "Checking Stryd…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val msg = try {
+                val run = PhoneRuns.read(this, start) ?: return@Thread
+                val m = StrydCloud.fetchFor(this, run)
+                if (m == null) "Stryd doesn't have this run yet — open the Stryd app to sync the pod"
+                else {
+                    StrydCloud.attach(this, start, m)
+                    val sid = PhoneRuns.stravaId(this, start)
+                    if (sid > 0) try {
+                        PhoneRuns.read(this, start)?.let { Strava.updateDescription(this, sid, Summary.notes(this, it, forStrava = true)) }
+                    } catch (e: Exception) { }
+                    "Stryd data added"
+                }
+            } catch (e: Exception) { "Stryd: ${e.message}" }
+            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); PhoneRuns.read(this, start)?.let { render(it) } }
+        }.start()
     }
 
     private fun uploadNow(run: JSONObject) {

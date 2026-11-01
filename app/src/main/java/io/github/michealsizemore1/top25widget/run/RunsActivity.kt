@@ -83,19 +83,38 @@ class RunsActivity : Activity() {
             )))
         })
 
-        // Sending.
+        // Destinations: Command Center, Strava, Stryd.
         val unsentCc = runs.map { it.optLong("start") }.filter { !PhoneRuns.sentToCommandCenter(this, it) }
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(10), 0, 0)
-            addView(RunUi.button(ctx, if (unsentCc.isEmpty()) "Command Center ✓" else "Send ${unsentCc.size} to Command Center",
-                RunUi.CC, Color.WHITE) {
+            fun pill(title: String, status: String, color: Int, onClick: () -> Unit) =
+                LinearLayout(ctx).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    background = RunUi.rounded(color, dp(18).toFloat())
+                    setPadding(dp(6), dp(10), dp(6), dp(10))
+                    addView(RunUi.text(ctx, title, Color.WHITE, 15f, true).apply { gravity = Gravity.CENTER })
+                    addView(RunUi.text(ctx, status, 0xDDFFFFFF.toInt(), 12f).apply { gravity = Gravity.CENTER })
+                    setOnClickListener { onClick() }
+                }
+            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { if (!last) marginEnd = dp(8) } }
+            addView(pill("Command Center", if (unsentCc.isEmpty()) "✓ all sent" else "Send ${unsentCc.size}", RunUi.CC) {
                 if (unsentCc.isEmpty()) Toast.makeText(ctx, "All runs are already in the Command Center", Toast.LENGTH_SHORT).show()
-                else { CommandCenter.send(ctx, unsentCc); }
-            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { marginEnd = dp(8) })
-            addView(RunUi.button(ctx, if (Strava.connected(ctx)) "Strava ✓" else "Connect Strava", RunUi.STRAVA, Color.WHITE) {
+                else CommandCenter.send(ctx, unsentCc)
+            }, lp(false))
+            addView(pill("Strava", if (Strava.connected(ctx)) "✓ connected" else "Connect", RunUi.STRAVA) {
                 startActivity(Intent(ctx, RunSettingsActivity::class.java))
-            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            }, lp(false))
+            addView(pill("Stryd", if (StrydCloud.connected(ctx)) "✓ connected" else "Connect", RunUi.STRYD) {
+                if (StrydCloud.connected(ctx)) {
+                    // Check for Stryd data on any run that doesn't have it yet.
+                    val missing = runs.filter { !it.has("stryd") }.map { it.optLong("start") }
+                    missing.forEach { StrydWorker.enqueue(ctx, it, delayMinutes = 0) }
+                    Toast.makeText(ctx, if (missing.isEmpty()) "All runs have their Stryd data"
+                        else "Checking Stryd for ${missing.size} run${if (missing.size == 1) "" else "s"}…", Toast.LENGTH_SHORT).show()
+                } else startActivity(Intent(ctx, RunSettingsActivity::class.java))
+            }, lp(true))
         })
 
         col.addView(RunUi.section(this, "RUNS FROM YOUR WATCH"))
@@ -113,6 +132,7 @@ class RunsActivity : Activity() {
                     val badges = buildList {
                         if (PhoneRuns.stravaId(ctx, start) > 0) add("Strava ✓")
                         else if (getSharedPreferences("runflags", 0).getString("strava_err_$start", null) != null) add("Strava ⚠")
+                        if (run.has("stryd")) add("Stryd ✓")
                         if (PhoneRuns.sentToCommandCenter(ctx, start)) add("CC ✓")
                     }.joinToString("  ")
                     addView(RunUi.text(ctx, badges, RunUi.MUTED, 12f))

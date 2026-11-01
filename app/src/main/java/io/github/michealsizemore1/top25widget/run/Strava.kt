@@ -124,6 +124,17 @@ object Strava {
         throw RuntimeException("Strava is still processing — check again later")
     }
 
+    /** Refreshes the description of a run already on Strava (e.g. once the Stryd metrics arrive). */
+    fun updateDescription(ctx: Context, activityId: Long, description: String) {
+        val conn = (URL("https://www.strava.com/api/v3/activities/$activityId").openConnection() as HttpURLConnection).apply {
+            requestMethod = "PUT"; doOutput = true; connectTimeout = 20_000; readTimeout = 30_000
+            setRequestProperty("Authorization", "Bearer ${token(ctx)}")
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        }
+        conn.outputStream.use { it.write("description=${URLEncoder.encode(description, "UTF-8")}".toByteArray()) }
+        readJson(conn)
+    }
+
     private fun postForm(url: String, form: Map<String, String>): JSONObject {
         val body = form.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
