@@ -13,7 +13,7 @@ android {
         minSdk = 30
         targetSdk = 34
         versionCode = 9
-        versionName = "3.0"
+        versionName = "3.0 · build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 
     signingConfigs {

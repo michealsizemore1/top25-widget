@@ -22,6 +22,18 @@ import java.util.zip.GZIPOutputStream
 object RunSync {
     private const val PREFS = "runsync"
 
+    /** Tells the phone which watch build is installed (shown in the phone's Run settings). */
+    fun reportVersion(ctx: Context) {
+        val app = ctx.applicationContext
+        Thread {
+            try {
+                val v = app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: ""
+                val req = PutDataMapRequest.create("/watchinfo").apply { dataMap.putString("version", v) }.asPutDataRequest()
+                com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(app).putDataItem(req))
+            } catch (e: Exception) { }
+        }.start()
+    }
+
     fun pushAll(ctx: Context) {
         val app = ctx.applicationContext
         val sent = app.getSharedPreferences(PREFS, 0)

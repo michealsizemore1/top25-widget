@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 25
-        versionName = "5.0"
+        versionName = "5.0 · build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 
     // One fixed key so every new build can install as an update over the last one.

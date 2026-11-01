@@ -163,6 +163,23 @@ class RunSettingsActivity : Activity() {
             }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
         }
 
+        // ---- Versions
+        col.addView(RunUi.section(this, "APP VERSIONS"))
+        col.addView(RunUi.text(this, "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName, RunUi.MUTED, 13f)
+            .apply { setPadding(dp(4), dp(6), 0, 0) })
+        val watchVer = RunUi.text(this, "Watch app: checking…", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(4), 0, 0) }
+        col.addView(watchVer)
+        Thread {
+            val v = try {
+                val items = com.google.android.gms.tasks.Tasks.await(com.google.android.gms.wearable.Wearable.getDataClient(ctx)
+                    .getDataItems(android.net.Uri.parse("wear://*/watchinfo")))
+                val found = items.map { com.google.android.gms.wearable.DataMapItem.fromDataItem(it).dataMap.getString("version") }.firstOrNull()
+                items.release()
+                found?.let { "Watch app $it" } ?: "Watch app: open Run on the watch once to show its build"
+            } catch (e: Exception) { "Watch app: not connected" }
+            runOnUiThread { watchVer.text = v }
+        }.start()
+
         setContentView(ScrollView(this).apply {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))

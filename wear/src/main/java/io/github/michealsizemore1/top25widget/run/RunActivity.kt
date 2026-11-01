@@ -80,6 +80,7 @@ class RunActivity : Activity() {
             prefs.edit().putString("autoPicked", today).apply()
         }
         RunSync.pushAll(this)   // send any runs the phone doesn't have yet
+        RunSync.reportVersion(this)
         screen = if (Run.isActive) Screen.LIVE else Screen.START
         requestNeeded()
     }
@@ -262,6 +263,9 @@ class RunActivity : Activity() {
         col.addView(label("History ›", C.MUTED, 13f, true).apply {
             setPadding(0, dp(14), 0, 0)
             setOnClickListener { startActivity(Intent(this@RunActivity, RunHistoryActivity::class.java)) }
+        })
+        col.addView(label("Watch app " + packageManager.getPackageInfo(packageName, 0).versionName, C.DIM, 10f).apply {
+            setPadding(0, dp(12), 0, 0)
         })
 
         root.removeAllViews()
