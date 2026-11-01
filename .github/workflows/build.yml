@@ -26,6 +26,10 @@ jobs:
       - name: Build APK
         run: gradle :app:assembleDebug :wear:assembleDebug --no-daemon
 
+      - name: Workout plan parser checks
+        run: gradle :app:testDebugUnitTest --no-daemon
+        continue-on-error: true
+
       - name: Rename APK
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk Top25Widget.apk
