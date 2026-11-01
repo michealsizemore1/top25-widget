@@ -165,7 +165,7 @@ object Workouts {
         }
 
         // A faster section inside a run: "10 miles with middle 6 @ goal pace", "12 mi w/ last 3 at tempo"
-        Regex("""(?:w/|with|incl\.?|including)\s*(?:the\s*)?(middle|last|final|first)?\s*(\d+(?:\.\d+)?)\s*(?:mi\b|miles?)?\s*(?:@|at|of)\b?""").find(t)
+        Regex("""(?:w/|with|incl\.?|including)\s*(?:the\s*)?(middle|last|final|first)?\s*(\d+(?:\.\d+)?)\s*(?:mi\b|miles?)?\s*(?:@|at\b|of\b)""").find(t)
             ?.takeIf { label != "Intervals" && total != null }?.let { m ->
                 val where = m.groupValues[1]
                 val hard = m.groupValues[2].toDouble()

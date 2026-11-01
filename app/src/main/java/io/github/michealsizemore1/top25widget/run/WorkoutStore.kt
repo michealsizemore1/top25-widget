@@ -73,7 +73,10 @@ object WorkoutStore {
             val text = days.optString(date)
             val existing = p.optJSONObject(date)
             if (existing != null && existing.optBoolean("edited")) return@forEach
-            val w = Workouts.fromPlanText(text)
+            // If a day can't be understood, keep it as a simple run with the plan's text as notes.
+            val w = try { Workouts.fromPlanText(text) } catch (e: Exception) {
+                Workouts.workout("Planned run", text.trim(), Workouts.step("run", "open", 0))
+            }
             if (w == null) { p.remove(date); return@forEach }
             p.put(date, w.put("id", "p$date").put("planText", text))
             n++
