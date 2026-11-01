@@ -71,6 +71,31 @@ class MainActivity : Activity() {
             TfScheduler.refreshNow(this)
             Toast.makeText(this, "Refreshing…", Toast.LENGTH_SHORT).show()
         }
+        // ---- Alerts
+        root.addView(TextView(this).apply {
+            text = "ALERTS"
+            textSize = 13f
+            letterSpacing = 0.1f
+            setTextColor(Color.parseColor("#D4E635"))
+            setPadding(0, px(12), 0, px(4))
+        })
+        fun toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) = android.widget.Switch(this).apply {
+            text = label
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            isChecked = on
+            setOnCheckedChangeListener { _, checked -> onChange(checked) }
+            root.addView(this, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = px(8) })
+        }
+        toggle("Upset alerts (Top 25)", Alerts.upsetsOn(this)) { Alerts.setUpsetsOn(this, it) }
+        toggle("Ohio State alerts", Alerts.osuOn(this)) { Alerts.setOsuOn(this, it) }
+        button("Send a test alert") {
+            if (Alerts.canNotify(this)) Alerts.test(this)
+            else if (android.os.Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+
         button("Open Master App") {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Config.SITE_URL)))
         }
@@ -82,6 +107,13 @@ class MainActivity : Activity() {
             setPadding(0, px(16), 0, 0)
         })
 
-        setContentView(root)
+        setContentView(android.widget.ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor("#121A17"))
+            addView(root)
+        })
+        // Android 13+ asks once before an app may post notifications.
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !Alerts.canNotify(this)) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
     }
 }

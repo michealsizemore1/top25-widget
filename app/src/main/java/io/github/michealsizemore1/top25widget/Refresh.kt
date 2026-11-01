@@ -135,6 +135,9 @@ class ScoresWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                 }
             }
             widget.updateAll(ctx)
+            if (league == League.CFB) {
+                try { Alerts.check(ctx, games) } catch (e: Exception) { /* never let alerts break scores */ }
+            }
             Scheduler.scheduleFastIfNeeded(ctx, league, games, inputData.getBoolean(Scheduler.INPUT_FAST, false))
             Result.success()
         } catch (e: Exception) {
