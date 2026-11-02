@@ -34,6 +34,9 @@ class RunDetailActivity : Activity() {
         render(run)
     }
 
+    private var weatherTried = false
+    private fun aqiColor(v: Int) = when { v <= 50 -> 0xFF22C55E.toInt(); v <= 100 -> 0xFFEAB308.toInt(); v <= 150 -> 0xFFF97316.toInt(); v <= 200 -> 0xFFEF4444.toInt(); else -> 0xFFA855F7.toInt() }
+
     private fun render(run: JSONObject) {
         val ctx = this
         fun dp(v: Int) = RunUi.dp(ctx, v)
@@ -76,6 +79,23 @@ class RunDetailActivity : Activity() {
                 RunUi.CC, Color.WHITE) { CommandCenter.send(ctx, listOf(start)) },
                 LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         })
+
+        // Weather and air quality at the run (sent to the Command Center).
+        col.addView(RunUi.section(this, "WEATHER"))
+        val wx = run.optJSONObject("weather")
+        if (wx != null) col.addView(RunUi.card(this).apply {
+            addView(RunUi.statGrid(ctx, listOfNotNull(
+                wx.takeIf { it.has("tempF") }?.let { Triple("${it.optLong("tempF")}°", "temp °F", Color.WHITE) },
+                wx.takeIf { it.has("humidity") }?.let { Triple("${it.optLong("humidity")}%", "humidity", Color.WHITE) },
+                wx.takeIf { it.has("aqi") }?.let { Triple("${it.optLong("aqi")}", "AQI (US)", aqiColor(it.optInt("aqi"))) },
+            )))
+        }) else {
+            col.addView(RunUi.text(this, "Looking up weather…", RunUi.MUTED, 13f))
+            if (!weatherTried) { weatherTried = true
+                Thread { val ok = try { RunWeather.fill(this, start) } catch (e: Exception) { false }
+                    runOnUiThread { if (ok) PhoneRuns.read(this, start)?.let { render(it) } } }.start()
+            }
+        }
 
         // Stryd metrics (from your Stryd account).
         col.addView(RunUi.section(this, "STRYD"))

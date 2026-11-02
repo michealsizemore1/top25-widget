@@ -80,10 +80,16 @@ object CommandCenter {
             put("cadence", run.optInt("avgCadence"))
             put("notes", Summary.notes(ctx, run))
             put("source", "watch")
+            // Weather at the run's place and time; Stryd's reading is used if the lookup failed.
+            run.optJSONObject("weather")?.let { w ->
+                if (w.has("tempF")) put("temp", w.optLong("tempF").toString())
+                if (w.has("humidity")) put("humidity", w.optLong("humidity"))
+                if (w.has("aqi")) put("aqi", w.optLong("aqi"))
+            }
             run.optJSONObject("stryd")?.let { s ->
                 s.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
-                s.optDouble("temp").takeIf { !it.isNaN() }?.let { put("temp", Math.round(it * 9 / 5 + 32).toString()) }
-                s.optDouble("humidity").takeIf { !it.isNaN() }?.let { put("humidity", Math.round(it)) }
+                if (!has("temp")) s.optDouble("temp").takeIf { !it.isNaN() }?.let { put("temp", Math.round(it * 9 / 5 + 32).toString()) }
+                if (!has("humidity")) s.optDouble("humidity").takeIf { !it.isNaN() }?.let { put("humidity", Math.round(it)) }
                 s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { put("airPower", it) }
                 s.optDouble("rss").takeIf { !it.isNaN() }?.let { put("rss", it.toInt()) }
             }
@@ -92,6 +98,14 @@ object CommandCenter {
 
     /** Opens the Command Center with these runs; it adds them to Activities and syncs. */
     fun send(ctx: Context, starts: List<Long>) {
+        // Fill in weather/AQI first for any run that doesn't have it yet (quick lookup), then open.
+        Thread {
+            starts.forEach { s -> PhoneRuns.read(ctx, s)?.let { if (!RunWeather.has(it)) try { RunWeather.fill(ctx, s) } catch (e: Exception) { } } }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { open(ctx, starts) }
+        }.start()
+    }
+
+    private fun open(ctx: Context, starts: List<Long>) {
         val arr = JSONArray()
         starts.forEach { s -> PhoneRuns.read(ctx, s)?.let { arr.put(activity(ctx, it)) } }
         if (arr.length() == 0) return

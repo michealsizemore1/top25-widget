@@ -141,6 +141,7 @@ class RunReceiverService : WearableListenerService() {
                 Tasks.await(Wearable.getDataClient(this).deleteDataItems(item.uri))
                 PhoneStatus.push(this)
                 if (isNew) {
+                    try { RunWeather.fill(this, json.optLong("start")) } catch (e: Exception) { }
                     notifyRun(json)
                     if (StrydCloud.autoFetch(this) && StrydCloud.connected(this)) StrydWorker.enqueue(this, json.optLong("start"))
                 }
