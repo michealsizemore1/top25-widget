@@ -172,6 +172,43 @@ class RunsActivity : Activity() {
             }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = RunUi.dp(ctx, 10) } })
         })
 
+        // Aerobic decoupling trend: steady runs of 40+ minutes.
+        run {
+            val pts = PhoneRuns.list(this).take(120).mapNotNull { f -> PhoneRuns.read(f) }
+                .mapNotNull { r -> io.github.michealsizemore1.top25widget.Decoupling.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.let { r.optLong("start") to it.main!! } }
+                .take(10)
+            if (pts.size >= 2) {
+                col.addView(RunUi.section(this, "AEROBIC DECOUPLING · STEADY RUNS"))
+                col.addView(RunUi.card(this).apply {
+                    val now = System.currentTimeMillis()
+                    val recent = pts.filter { now - it.first < 28 * 86_400_000L }.map { it.second }
+                    val older = pts.filter { now - it.first >= 28 * 86_400_000L }.map { it.second }
+                    if (recent.isNotEmpty()) {
+                        val avg = recent.average()
+                        addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Decoupling.text(avg) + " average, last 4 weeks", io.github.michealsizemore1.top25widget.Decoupling.color(avg), 18f, true))
+                        if (older.isNotEmpty()) {
+                            val diff = avg - older.average()
+                            addView(RunUi.text(ctx, (if (diff <= 0) "Improving: " else "Up: ") + String.format(java.util.Locale.US, "%+.1f", diff) +
+                                " pts vs earlier runs" + (if (diff <= 0) " — aerobic base is building" else " — check heat, fatigue or pace"), RunUi.MUTED, 12f))
+                        }
+                    }
+                    // One bar per run, oldest → newest.
+                    addView(LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.BOTTOM
+                        setPadding(0, RunUi.dp(ctx, 10), 0, 0)
+                        pts.reversed().forEach { (st, v) ->
+                            addView(LinearLayout(ctx).apply {
+                                orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
+                                addView(RunUi.text(ctx, String.format(java.util.Locale.US, "%.0f", v), RunUi.MUTED, 10f).apply { gravity = android.view.Gravity.CENTER })
+                                addView(android.view.View(ctx).apply { background = RunUi.rounded(io.github.michealsizemore1.top25widget.Decoupling.color(v), RunUi.dp(ctx, 3).toFloat()) },
+                                    LinearLayout.LayoutParams(RunUi.dp(ctx, 14), RunUi.dp(ctx, (6 + v.coerceIn(0.0, 15.0) * 4).toInt())))
+                                addView(RunUi.text(ctx, java.text.SimpleDateFormat("M/d", java.util.Locale.US).format(java.util.Date(st)), RunUi.DIM, 9f).apply { gravity = android.view.Gravity.CENTER })
+                            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                        }
+                    })
+                })
+            }
+        }
         col.addView(RunUi.section(this, "RUNS FROM YOUR WATCH"))
         if (runs.isEmpty()) {
             col.addView(RunUi.text(this, "No runs yet. Finish a run on the watch and it appears here automatically " +

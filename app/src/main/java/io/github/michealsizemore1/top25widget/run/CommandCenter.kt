@@ -34,6 +34,7 @@ object Summary {
         if (run.optInt("avgHr") > 0) lines += "Heart rate: avg ${run.optInt("avgHr")} · max ${run.optInt("maxHr")} bpm (" +
             (if (run.optString("hrSource") == "strap") "chest strap" else "wrist") + ")"
         zoneLine(run.optJSONArray("hrZoneSeconds"), "HR zones: ")?.let { lines += it }
+        io.github.michealsizemore1.top25widget.Decoupling.of(run)?.let { d -> io.github.michealsizemore1.top25widget.Decoupling.line(d).takeIf { it.isNotBlank() }?.let { lines += it } }
         zoneLine(run.optJSONArray("zoneSeconds"), "Power zones: ")?.let { lines += it }
         run.optDouble("avgStride").takeIf { !it.isNaN() && it > 0 }?.let { lines += "Avg stride ${"%.2f".format(Locale.US, it)} m" }
         val laps = run.optJSONArray("laps")

@@ -285,6 +285,7 @@ object Run {
     fun finish(ctx: Context): JSONObject {
         if (movingSeconds - lapStartSec > 5) lap(auto = true)
         val json = toJson(System.currentTimeMillis())
+        try { io.github.michealsizemore1.top25widget.Decoupling.compute(json)?.let { json.put("decoupling", it.toJson()) } } catch (e: Exception) { }
         RunStore.save(ctx, json)
         RunStore.clearCurrent(ctx)
         state = State.IDLE
