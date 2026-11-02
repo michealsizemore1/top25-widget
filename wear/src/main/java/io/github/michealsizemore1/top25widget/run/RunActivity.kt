@@ -374,6 +374,16 @@ class RunActivity : Activity() {
         root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
     }
 
+    /** After a run: back to the Running home screen (sensors on again, ready for the next run). */
+    private fun backToHome() {
+        screen = Screen.START
+        summary = null
+        showSettings = false; overlayOpen = false; editorRotary = null
+        liveBuilt = false; startBuilt = false
+        if (!RunService.running) RunService.start(this)
+        render()
+    }
+
     private fun startRun() {
         if (!RunService.running) RunService.start(this)
         Run.start()
@@ -691,7 +701,7 @@ class RunActivity : Activity() {
             screen == Screen.LIVE -> if (prefs.getBoolean("bottomBtn", true)) bottomInRun()
             editorRotary != null || overlayOpen -> { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart() }
             screen == Screen.START && showSettings -> { showSettings = false; startBuilt = false; renderStart() }
-            screen == Screen.SUMMARY -> finish()
+            screen == Screen.SUMMARY -> backToHome()
             screen == Screen.START && !Run.isActive && prefs.getBoolean("bottomBtn", true) -> { pulse(longArrayOf(0, 400)); startRun() }
             else -> finish()
         }
@@ -702,7 +712,7 @@ class RunActivity : Activity() {
         if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
-        if (screen == Screen.SUMMARY) { finish(); return }
+        if (screen == Screen.SUMMARY) { backToHome(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -1225,7 +1235,7 @@ class RunActivity : Activity() {
         liveBuilt = false
         root.removeAllViews()
         root.setBackgroundColor(C.BG)
-        root.addView(RunViews.summary(this, json, onDone = { finish() }))
+        root.addView(RunViews.summary(this, json, onDone = { backToHome() }))
     }
 
     // ---------------------------------------------------------------- helpers
