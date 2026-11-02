@@ -364,11 +364,11 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
-        col.addView(row("quickBtn", "Watch buttons: bottom start/finish · orange lap") {
+        col.addView(row("quickBtn", "Bottom button: start · lap · double-press finish") {
             prefs.edit().putBoolean("quickButton", !prefs.getBoolean("quickButton", true)).apply()
         }.apply {
-            addView(label("Bottom: start · during a run, pause + finish · again to save. Orange: lap / next step · resume. " +
-                "For orange, set it once: watch Settings → Advanced features → Customize buttons → Quick button → Running.", C.MUTED, 9f))
+            addView(label("Press once on this screen to start. During a run: press once for a lap (next step in a workout), " +
+                "press twice quickly to finish and save.", C.MUTED, 9f))
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
@@ -614,13 +614,17 @@ class RunActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // During a run the bottom button is a run control, never "leave the app".
-        if (screen == Screen.LIVE && !wrongDevice) { backButton(); return }
+        if (screen == Screen.LIVE && !wrongDevice) {
+            if (prefs.getBoolean("quickButton", true)) backButton()
+            return
+        }
         // Back (or swipe) from a number editor returns to the start screen without saving.
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && !Run.isActive && prefs.getBoolean("quickButton", true)) {
             pulse(longArrayOf(0, 400)); startRun(); return     // bottom button = start
         }
+        if (screen == Screen.SUMMARY) { finish(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -713,46 +717,29 @@ class RunActivity : Activity() {
     // ---------------------------------------------------------------- watch buttons
 
     /**
-     * The Galaxy Watch Ultra's orange Quick button, when set to open Running (watch Settings →
-     * Advanced features → Customize buttons → Quick button → Running). Pressing it while Running is
-     * open arrives here as a new launch. Some watches send it as a "stem" key instead.
+     * Bottom button during a run: one press = lap (or next workout step), a quick double press =
+     * finish and save. A single press waits ~half a second to make sure it isn't a double.
      */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (wrongDevice) return
-        // Only when the Running screen was already showing — reopening the app from the app list
-        // or another screen just brings it back.
-        if (intent.action == Intent.ACTION_MAIN && prefs.getBoolean("quickButton", true) && wasVisible) quickButton()
-    }
+    private var pendingLap: Runnable? = null
 
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (!wrongDevice && event.keyCode in listOf(android.view.KeyEvent.KEYCODE_STEM_1, android.view.KeyEvent.KEYCODE_STEM_2,
-                android.view.KeyEvent.KEYCODE_STEM_3, android.view.KeyEvent.KEYCODE_STEM_PRIMARY)) {
-            if (event.action == android.view.KeyEvent.ACTION_UP) quickButton()
-            return true
-        }
-        return super.dispatchKeyEvent(event)
-    }
-
-    /** Orange button: lap (or next workout step) while running; resume when paused / on the Finish screen. */
-    private fun quickButton() {
-        if (screen != Screen.LIVE) return
-        when {
-            confirmingFinish || Run.state != Run.State.RUNNING -> {
-                confirmingFinish = false; Run.resume(); pulse(longArrayOf(0, 120, 80, 120)); flash("RESUMED"); renderLive()
-            }
-            Run.hasWorkout && !Run.workoutDone -> { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
-            else -> { Run.lap(); flash("LAP ${Run.laps.size}") }
-        }
-    }
-
-    /** Bottom button during a run: pause and open Finish → press again to save. */
     private fun backButton() {
-        if (confirmingFinish) { pulse(longArrayOf(0, 200, 100, 200, 100, 600)); finishRun(); return }
-        Run.pause()
-        confirmingFinish = true; page = 0
-        pulse(longArrayOf(0, 500)); renderLive()
+        val waiting = pendingLap
+        if (waiting != null) {
+            // Second press: it's a double press → finish.
+            handler.removeCallbacks(waiting); pendingLap = null
+            if (Run.state != Run.State.RUNNING) Run.resume()   // a paused run still saves normally
+            pulse(longArrayOf(0, 200, 100, 200, 100, 700))
+            finishRun()
+            return
+        }
+        val lap = Runnable {
+            pendingLap = null
+            if (!Run.isActive) return@Runnable
+            if (Run.hasWorkout && !Run.workoutDone) { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
+            else { Run.lap(); flash("LAP ${Run.laps.size}") }
+        }
+        pendingLap = lap
+        handler.postDelayed(lap, 450)
     }
 
     private fun pulse(p: LongArray) {
@@ -1080,7 +1067,7 @@ class RunActivity : Activity() {
             }
 
         if (confirmingFinish) {
-            controlsBox.addView(label("Bottom button = save · Orange = resume", C.MUTED, 10f))
+            controlsBox.addView(label("Tip: double-press the bottom button to finish", C.MUTED, 10f))
             controlsBox.addView(button("SAVE RUN", C.OK) { finishRun() })
             controlsBox.addView(button("Discard", C.STOP, Color.WHITE) {
                 Run.discard(this); RunService.stop(this); finish()
