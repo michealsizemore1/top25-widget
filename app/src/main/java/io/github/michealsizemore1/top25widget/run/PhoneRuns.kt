@@ -33,6 +33,19 @@ object PhoneRuns {
     fun read(f: File): JSONObject? = try { JSONObject(f.readText()) } catch (e: Exception) { null }
     fun read(ctx: Context, start: Long): JSONObject? = file(ctx, start).takeIf { it.exists() }?.let { read(it) }
 
+    /** Deletes the run here and tells the watch to delete its copy too. */
+    fun deleteEverywhere(ctx: Context, start: Long) {
+        delete(ctx, start)
+        val app = ctx.applicationContext
+        Thread {
+            try {
+                val req = PutDataMapRequest.create("/deleted/$start").apply { dataMap.putLong("at", System.currentTimeMillis()) }
+                    .asPutDataRequest().setUrgent()
+                Tasks.await(Wearable.getDataClient(app).putDataItem(req))
+            } catch (e: Exception) { }
+        }.start()
+    }
+
     fun delete(ctx: Context, start: Long) {
         file(ctx, start).delete()
         flags(ctx).edit().remove("cc_$start").apply()
@@ -99,6 +112,9 @@ class RunReceiverService : WearableListenerService() {
     }
 
     override fun onDataChanged(events: DataEventBuffer) {
+        // A run deleted on the watch: delete the phone's copy too.
+        events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path?.startsWith("/deleted/") == true }
+            .forEach { e -> e.dataItem.uri.lastPathSegment?.toLongOrNull()?.let { PhoneRuns.delete(this, it); PhoneStatus.push(this) } }
         val items = events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path?.startsWith("/run/") == true }
             .map { it.dataItem.freeze() }
         items.forEach { item ->

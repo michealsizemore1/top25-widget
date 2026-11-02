@@ -504,4 +504,5 @@ object RunStore {
     fun read(f: File): JSONObject? = try { JSONObject(f.readText()) } catch (e: Exception) { null }
 
     fun delete(f: File) { f.delete() }
+    fun deleteStart(ctx: Context, start: Long) { File(dir(ctx), "$start.json").delete() }
 }

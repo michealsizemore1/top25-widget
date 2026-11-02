@@ -205,9 +205,9 @@ class RunDetailActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(24), 0, 0)
             setOnClickListener {
-                AlertDialog.Builder(ctx).setTitle("Delete this run from the phone?")
+                AlertDialog.Builder(ctx).setTitle("Delete this run from the phone and watch?")
                     .setMessage("It stays in the Command Center if it was sent there.")
-                    .setPositiveButton("Delete") { _, _ -> PhoneRuns.delete(ctx, start); finish() }
+                    .setPositiveButton("Delete") { _, _ -> PhoneRuns.deleteEverywhere(ctx, start); finish() }
                     .setNegativeButton("Cancel", null).show()
             }
         })

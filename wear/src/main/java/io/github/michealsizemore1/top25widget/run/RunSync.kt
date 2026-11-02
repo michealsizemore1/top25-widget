@@ -87,6 +87,20 @@ object RunSync {
         }.start()
     }
 
+    /** A run was deleted here: leave a note so the phone deletes its copy too (whenever it connects). */
+    fun deleteEverywhere(ctx: Context, start: Long) {
+        if (start <= 0) return
+        val app = ctx.applicationContext
+        app.getSharedPreferences(PREFS, 0).edit().remove(start.toString()).apply()
+        Thread {
+            try {
+                val req = PutDataMapRequest.create("/deleted/$start").apply { dataMap.putLong("at", System.currentTimeMillis()) }
+                    .asPutDataRequest().setUrgent()
+                com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(app).putDataItem(req))
+            } catch (e: Exception) { }
+        }.start()
+    }
+
     fun pushAll(ctx: Context) {
         val app = ctx.applicationContext
         val sent = app.getSharedPreferences(PREFS, 0)
@@ -143,6 +157,11 @@ object WatchWorkouts {
 class RunSettingsListener : WearableListenerService() {
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
+            // A run deleted on the phone: delete the watch's copy too.
+            if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path?.startsWith("/deleted/") == true) {
+                e.dataItem.uri.lastPathSegment?.toLongOrNull()?.let { RunStore.deleteStart(this, it) }
+                return@forEach
+            }
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == "/phonestatus") {
                 val m = DataMapItem.fromDataItem(e.dataItem).dataMap
                 getSharedPreferences("phonestatus", 0).edit()

@@ -66,7 +66,9 @@ class RunHistoryActivity : Activity() {
 
     private fun showRun(file: File, json: JSONObject) {
         val view = RunViews.summary(this, json, onDone = { showList() }, onDelete = {
-            RunStore.delete(file); showList()
+            RunStore.delete(file)
+            RunSync.deleteEverywhere(this, file.nameWithoutExtension.toLongOrNull() ?: 0L)   // phone too
+            showList()
         })
         setContentView(view)
     }
