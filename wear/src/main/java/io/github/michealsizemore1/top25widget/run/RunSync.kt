@@ -40,7 +40,7 @@ object RunSync {
         }.start()
     }
 
-    /** Asks the phone to do something (a Command Center / Strava / Stryd button on the watch). */
+    /** Asks the phone to do something (a Command Center / Stryd button on the watch). */
     fun tellPhone(ctx: Context, path: String, done: (Boolean) -> Unit) {
         val app = ctx.applicationContext
         Thread {
@@ -111,7 +111,7 @@ class RunSettingsListener : WearableListenerService() {
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == "/phonestatus") {
                 val m = DataMapItem.fromDataItem(e.dataItem).dataMap
                 getSharedPreferences("phonestatus", 0).edit()
-                    .putInt("ccUnsent", m.getInt("ccUnsent")).putBoolean("strava", m.getBoolean("strava"))
+                    .putInt("ccUnsent", m.getInt("ccUnsent"))
                     .putBoolean("stryd", m.getBoolean("stryd")).putLong("at", System.currentTimeMillis()).apply()
                 return@forEach
             }

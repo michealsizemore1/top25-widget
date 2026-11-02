@@ -15,7 +15,7 @@ import android.widget.Switch
 import android.widget.Toast
 import io.github.michealsizemore1.top25widget.RunMath
 
-/** Zones (sent to the watch), Command Center link, and Strava connection. */
+/** Zones (sent to the watch), Command Center link, and Stryd connection. */
 class RunSettingsActivity : Activity() {
 
     override fun onResume() {
@@ -80,46 +80,6 @@ class RunSettingsActivity : Activity() {
             RunSettings.save(ctx, mh, rh, c, k, cc.text.toString().trim().ifBlank { RunSettings.ccUrl(ctx) })
             Toast.makeText(ctx, "Saved — sent to your watch", Toast.LENGTH_SHORT).show()
         }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) } })
-
-        // ---- Strava
-        col.addView(RunUi.section(this, "STRAVA"))
-        if (Strava.connected(this)) {
-            col.addView(RunUi.card(this).apply {
-                addView(RunUi.text(ctx, "Connected" + Strava.athlete(ctx).takeIf { it.isNotBlank() }?.let { " as $it" }.orEmpty(), Color.WHITE, 16f, true))
-                addView(Switch(ctx).apply {
-                    text = "Upload new runs automatically"; setTextColor(Color.WHITE)
-                    isChecked = Strava.autoUpload(ctx)
-                    setOnCheckedChangeListener { _, on -> Strava.setAutoUpload(ctx, on) }
-                    setPadding(0, dp(10), 0, 0)
-                })
-                addView(RunUi.text(ctx, "Disconnect", RunUi.STRAVA, 14f, true).apply {
-                    setPadding(0, dp(12), 0, 0)
-                    setOnClickListener { Strava.disconnect(ctx); render() }
-                })
-            })
-        } else {
-            col.addView(RunUi.text(this,
-                "Strava now requires a paid Strava subscription to use its API. Without one, open any run " +
-                "and tap Share TCX file, then upload that file on strava.com (Upload activity → File).\n\n" +
-                "One-time setup (with a subscription):\n" +
-                "1. Open strava.com/settings/api (link below) and create an app. Any name and website work; " +
-                "set Authorization Callback Domain to  localhost\n" +
-                "2. Copy the Client ID and Client Secret here.\n" +
-                "3. Tap Connect Strava and approve.", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(8), dp(4), 0) })
-            col.addView(RunUi.text(this, "Open strava.com/settings/api ›", RunUi.STRAVA, 14f, true).apply {
-                setPadding(dp(4), dp(10), 0, 0)
-                setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.strava.com/settings/api"))) }
-            })
-            val id = input("Client ID", Strava.clientId(this), num)
-            val secret = input("Client Secret", Strava.clientSecret(this), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
-            col.addView(RunUi.button(this, "Connect Strava", RunUi.STRAVA, Color.WHITE) {
-                if (id.text.isBlank() || secret.text.isBlank()) {
-                    Toast.makeText(ctx, "Enter the Client ID and Secret first", Toast.LENGTH_SHORT).show(); return@button
-                }
-                Strava.saveApp(ctx, id.text.toString(), secret.text.toString())
-                Strava.authorize(ctx)
-            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
-        }
 
         // ---- Stryd
         col.addView(RunUi.section(this, "STRYD"))

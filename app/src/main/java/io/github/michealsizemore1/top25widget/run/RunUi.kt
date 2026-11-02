@@ -27,7 +27,6 @@ object RunUi {
     const val DIM = 0xFF5E6663.toInt()
     const val HR = 0xFFFF6B6B.toInt()
     const val POWER = 0xFFFFB547.toInt()
-    const val STRAVA = 0xFFFC4C02.toInt()
     const val CC = 0xFF7B61FF.toInt()
     const val STRYD = 0xFF50555E.toInt()
 

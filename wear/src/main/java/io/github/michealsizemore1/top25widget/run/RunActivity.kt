@@ -244,7 +244,7 @@ class RunActivity : Activity() {
             })
         })
 
-        // Same three buttons as the phone. They run on the phone (its browser, internet, and logins).
+        // Same buttons as the phone. They run on the phone (its browser, internet, and logins).
         val ps = getSharedPreferences("phonestatus", 0)
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -263,10 +263,8 @@ class RunActivity : Activity() {
             }
             val cc = ps.getInt("ccUnsent", 0)
             val lp = { last: Boolean -> LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { if (!last) marginEnd = dp(4) } }
-            addView(pill("CC", if (ps.contains("at")) (if (cc == 0) "✓ sent" else "Send $cc") else "—", 0xFF7B61FF.toInt(), "/cmd/cc",
+            addView(pill("Command Center", if (ps.contains("at")) (if (cc == 0) "✓ sent" else "Send $cc") else "—", 0xFF7B61FF.toInt(), "/cmd/cc",
                 "Tap the notification on your phone"), lp(false))
-            addView(pill("Strava", if (ps.getBoolean("strava", false)) "✓" else "Connect", 0xFFFC4C02.toInt(), "/cmd/strava",
-                "Phone is uploading to Strava"), lp(false))
             addView(pill("Stryd", if (ps.getBoolean("stryd", false)) "✓" else "Connect", 0xFF50555E.toInt(), "/cmd/stryd",
                 "Phone is checking Stryd"), lp(true))
         })

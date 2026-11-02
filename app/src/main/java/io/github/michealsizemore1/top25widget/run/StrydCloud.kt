@@ -163,13 +163,6 @@ class StrydWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             val m = StrydCloud.fetchFor(applicationContext, run)
             if (m != null) {
                 StrydCloud.attach(applicationContext, start, m)
-                // Already on Strava: add the Stryd numbers to its description.
-                val sid = PhoneRuns.stravaId(applicationContext, start)
-                if (sid > 0) try {
-                    PhoneRuns.read(applicationContext, start)?.let {
-                        Strava.updateDescription(applicationContext, sid, Summary.notes(applicationContext, it, forStrava = true))
-                    }
-                } catch (e: Exception) { }
                 Result.success()
             }
             else if (runAttemptCount < 5) Result.retry() else Result.failure()   // not synced yet

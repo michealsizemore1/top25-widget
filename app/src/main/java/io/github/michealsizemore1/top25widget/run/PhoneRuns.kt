@@ -35,12 +35,10 @@ object PhoneRuns {
 
     fun delete(ctx: Context, start: Long) {
         file(ctx, start).delete()
-        flags(ctx).edit().remove("strava_$start").remove("cc_$start").apply()
+        flags(ctx).edit().remove("cc_$start").apply()
     }
 
     // Where each run has been sent.
-    fun stravaId(ctx: Context, start: Long): Long = flags(ctx).getLong("strava_$start", 0L)
-    fun setStravaId(ctx: Context, start: Long, id: Long) = flags(ctx).edit().putLong("strava_$start", id).apply()
     fun sentToCommandCenter(ctx: Context, start: Long) = flags(ctx).getBoolean("cc_$start", false)
     fun setSentToCommandCenter(ctx: Context, start: Long) = flags(ctx).edit().putBoolean("cc_$start", true).apply()
 
@@ -88,7 +86,7 @@ object RunSettings {
 
 /** Receives finished runs from the watch. */
 class RunReceiverService : WearableListenerService() {
-    /** Buttons tapped on the watch (Command Center, Strava, Stryd). */
+    /** Buttons tapped on the watch (Command Center, Stryd). */
     override fun onMessageReceived(event: com.google.android.gms.wearable.MessageEvent) {
         if (event.path.startsWith("/cmd/")) PhoneStatus.command(this, event.path)
     }
@@ -109,9 +107,7 @@ class RunReceiverService : WearableListenerService() {
                 PhoneStatus.push(this)
                 if (isNew) {
                     notifyRun(json)
-                    // Stryd first (its metrics go in the Strava description), then Strava.
                     if (StrydCloud.autoFetch(this) && StrydCloud.connected(this)) StrydWorker.enqueue(this, json.optLong("start"))
-                    if (Strava.autoUpload(this) && Strava.connected(this)) StravaWorker.enqueue(this, json.optLong("start"))
                 }
             } catch (e: Exception) { android.util.Log.w("RunReceiver", "run sync failed", e) }
         }

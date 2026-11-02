@@ -26,12 +26,14 @@ class RunsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) { wrongDevice = true; return }
-        handleStravaRedirect(intent)
+        handleLink(intent)
+        // Clear the sign-in left from the removed Strava connection.
+        try { deleteSharedPreferences("strava") } catch (e: Exception) { }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleStravaRedirect(intent)
+        handleLink(intent)
     }
 
     override fun onResume() {
@@ -59,17 +61,11 @@ class RunsActivity : Activity() {
         return true
     }
 
-    /** Strava sends you back here after you approve: finish connecting. */
-    private fun handleStravaRedirect(i: Intent?) {
+    /** Links into the app (the Command Center's "Send plan to Running app"). */
+    private fun handleLink(i: Intent?) {
         val data = i?.data ?: return
         if (data.scheme != "scoresrun") return
-        if (handlePlanImport(data)) return
-        val code = data.getQueryParameter("code")
-        if (code == null) { Toast.makeText(this, "Strava wasn't connected", Toast.LENGTH_LONG).show(); return }
-        Thread {
-            val msg = try { Strava.exchangeCode(this, code); "Strava connected" } catch (e: Exception) { "Strava: ${e.message}" }
-            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); render() }
-        }.start()
+        handlePlanImport(data)
     }
 
     private fun render() {
@@ -114,7 +110,7 @@ class RunsActivity : Activity() {
             )))
         })
 
-        // Destinations: Command Center, Strava, Stryd.
+        // Destinations: Command Center, Stryd.
         val unsentCc = runs.map { it.optLong("start") }.filter { !PhoneRuns.sentToCommandCenter(this, it) }
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -133,9 +129,6 @@ class RunsActivity : Activity() {
             addView(pill("Command Center", if (unsentCc.isEmpty()) "✓ all sent" else "Send ${unsentCc.size}", RunUi.CC) {
                 if (unsentCc.isEmpty()) Toast.makeText(ctx, "All runs are already in the Command Center", Toast.LENGTH_SHORT).show()
                 else CommandCenter.send(ctx, unsentCc)
-            }, lp(false))
-            addView(pill("Strava", if (Strava.connected(ctx)) "✓ connected" else "Connect", RunUi.STRAVA) {
-                startActivity(Intent(ctx, RunSettingsActivity::class.java))
             }, lp(false))
             addView(pill("Stryd", if (StrydCloud.connected(ctx)) "✓ connected" else "Connect", RunUi.STRYD) {
                 if (StrydCloud.connected(ctx)) {
@@ -181,8 +174,6 @@ class RunsActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     addView(RunUi.text(ctx, PhoneRuns.title(run), Color.WHITE, 17f, true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                     val badges = buildList {
-                        if (PhoneRuns.stravaId(ctx, start) > 0) add("Strava ✓")
-                        else if (getSharedPreferences("runflags", 0).getString("strava_err_$start", null) != null) add("Strava ⚠")
                         if (run.has("stryd")) add("Stryd ✓")
                         if (PhoneRuns.sentToCommandCenter(ctx, start)) add("CC ✓")
                     }.joinToString("  ")

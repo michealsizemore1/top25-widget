@@ -72,21 +72,10 @@ class RunDetailActivity : Activity() {
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(10), 0, 0)
-            val sid = PhoneRuns.stravaId(ctx, start)
-            addView(RunUi.button(ctx, if (sid > 0) "View on Strava" else "Upload to Strava", RunUi.STRAVA, Color.WHITE) {
-                when {
-                    sid > 0 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.strava.com/activities/$sid")))
-                    !Strava.connected(ctx) -> startActivity(Intent(ctx, RunSettingsActivity::class.java))
-                    else -> uploadNow(run)
-                }
-            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { marginEnd = dp(8) })
             addView(RunUi.button(ctx, if (PhoneRuns.sentToCommandCenter(ctx, start)) "Resend to CC" else "Send to Command Center",
                 RunUi.CC, Color.WHITE) { CommandCenter.send(ctx, listOf(start)) },
                 LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         })
-        getSharedPreferences("runflags", 0).getString("strava_err_$start", null)?.takeIf { PhoneRuns.stravaId(ctx, start) == 0L }?.let {
-            col.addView(RunUi.text(this, "Last Strava try: $it", RunUi.STRAVA, 12f).apply { setPadding(dp(4), dp(6), 0, 0) })
-        }
 
         // Stryd metrics (from your Stryd account).
         col.addView(RunUi.section(this, "STRYD"))
@@ -207,7 +196,7 @@ class RunDetailActivity : Activity() {
             col.addView(RunUi.card(this).apply { addView(RunUi.route(ctx, track)) })
         }
 
-        col.addView(RunUi.text(this, "Share TCX file (for manual Strava or other uploads)", RunUi.ACCENT, 14f, true).apply {
+        col.addView(RunUi.text(this, "Share run file (TCX)", RunUi.ACCENT, 14f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(24), 0, 0)
             setOnClickListener { shareTcx(run) }
@@ -217,7 +206,7 @@ class RunDetailActivity : Activity() {
             setPadding(0, dp(24), 0, 0)
             setOnClickListener {
                 AlertDialog.Builder(ctx).setTitle("Delete this run from the phone?")
-                    .setMessage("It stays on Strava and in the Command Center if it was sent there.")
+                    .setMessage("It stays in the Command Center if it was sent there.")
                     .setPositiveButton("Delete") { _, _ -> PhoneRuns.delete(ctx, start); finish() }
                     .setNegativeButton("Cancel", null).show()
             }
@@ -238,10 +227,6 @@ class RunDetailActivity : Activity() {
                 if (m == null) "Stryd doesn't have this run yet — open the Stryd app to sync the pod"
                 else {
                     StrydCloud.attach(this, start, m)
-                    val sid = PhoneRuns.stravaId(this, start)
-                    if (sid > 0) try {
-                        PhoneRuns.read(this, start)?.let { Strava.updateDescription(this, sid, Summary.notes(this, it, forStrava = true)) }
-                    } catch (e: Exception) { }
                     "Stryd data added"
                 }
             } catch (e: Exception) { "Stryd: ${e.message}" }
@@ -260,20 +245,5 @@ class RunDetailActivity : Activity() {
             putExtra(Intent.EXTRA_SUBJECT, PhoneRuns.title(run))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }, "Share run file"))
-    }
-
-    private fun uploadNow(run: JSONObject) {
-        Toast.makeText(this, "Uploading to Strava…", Toast.LENGTH_SHORT).show()
-        Thread {
-            val msg = try {
-                PhoneRuns.setStravaId(this, start, Strava.upload(this, run))
-                getSharedPreferences("runflags", 0).edit().remove("strava_err_$start").apply()
-                "Uploaded to Strava"
-            } catch (e: Exception) {
-                getSharedPreferences("runflags", 0).edit().putString("strava_err_$start", e.message).apply()
-                "Strava: ${e.message}"
-            }
-            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); PhoneRuns.read(this, start)?.let { render(it) } }
-        }.start()
     }
 }

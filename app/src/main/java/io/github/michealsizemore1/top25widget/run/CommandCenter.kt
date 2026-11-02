@@ -11,7 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Text summaries of a run, for the Command Center notes and the Strava description. */
+/** Text summary of a run, for the Command Center notes. */
 object Summary {
     fun zoneLine(secs: JSONArray?, prefix: String): String? {
         if (secs == null) return null
@@ -20,7 +20,7 @@ object Summary {
         return prefix + (0 until minOf(5, secs.length())).joinToString(" · ") { "Z${it + 1} ${RunMath.clock(secs.optInt(it))}" }
     }
 
-    fun notes(ctx: Context, run: JSONObject, forStrava: Boolean = false): String {
+    fun notes(ctx: Context, run: JSONObject): String {
         val lines = mutableListOf<String>()
         if (run.optInt("np") > 0) {
             var l = "Power: avg ${run.optInt("avgPower")} W · NP ${run.optInt("np")} W"
@@ -50,7 +50,7 @@ object Summary {
             )
             if (parts.isNotEmpty()) lines += "Stryd: " + parts.joinToString(" · ")
         }
-        if (!forStrava) lines += "Recorded on Galaxy Watch (" + (if (run.optString("source") == "gps") "GPS" else "Stryd") + " pace/distance)"
+        lines += "Recorded on Galaxy Watch (" + (if (run.optString("source") == "gps") "GPS" else "Stryd") + " pace/distance)"
         return lines.joinToString("\n")
     }
 }
@@ -83,7 +83,6 @@ object CommandCenter {
                 s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { put("airPower", it) }
                 s.optDouble("rss").takeIf { !it.isNaN() }?.let { put("rss", it.toInt()) }
             }
-            PhoneRuns.stravaId(ctx, start).takeIf { it > 0 }?.let { put("routeUrl", "https://www.strava.com/activities/$it") }
         }
     }
 

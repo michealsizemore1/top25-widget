@@ -11,7 +11,7 @@ import com.google.android.gms.wearable.Wearable
 import io.github.michealsizemore1.top25widget.R
 
 /**
- * Keeps the watch's Command Center / Strava / Stryd buttons in step with the phone,
+ * Keeps the watch's Command Center / Stryd buttons in step with the phone,
  * and carries out what those buttons ask for.
  */
 object PhoneStatus {
@@ -25,7 +25,6 @@ object PhoneStatus {
             try {
                 val req = PutDataMapRequest.create("/phonestatus").apply {
                     dataMap.putInt("ccUnsent", unsentCc(app).size)
-                    dataMap.putBoolean("strava", Strava.connected(app))
                     dataMap.putBoolean("stryd", StrydCloud.connected(app))
                     dataMap.putInt("runs", PhoneRuns.list(app).size)
                 }.asPutDataRequest().setUrgent()
@@ -43,13 +42,6 @@ object PhoneStatus {
                 notify(ctx, 901, if (n > 0) "Send $n run${if (n == 1) "" else "s"} to Command Center" else "Command Center is up to date",
                     if (n > 0) "Tap to open the Command Center and add them" else "All runs are already there",
                     Intent(ctx, RunsActivity::class.java).putExtra("sendCc", n > 0))
-            }
-            "/cmd/strava" -> {
-                if (!Strava.connected(ctx)) {
-                    notify(ctx, 902, "Strava isn't connected", "Tap to connect it in Run settings",
-                        Intent(ctx, RunSettingsActivity::class.java))
-                } else PhoneRuns.list(ctx).mapNotNull { it.nameWithoutExtension.toLongOrNull() }
-                    .filter { PhoneRuns.stravaId(ctx, it) == 0L }.forEach { StravaWorker.enqueue(ctx, it) }
             }
             "/cmd/stryd" -> {
                 if (!StrydCloud.connected(ctx)) {
