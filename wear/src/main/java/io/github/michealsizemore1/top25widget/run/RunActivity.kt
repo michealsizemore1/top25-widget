@@ -178,7 +178,7 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
-        set("quickBtn", if (prefs.getBoolean("quickButton", true)) "On" else "Off")
+        set("quickBtn", if (prefs.getBoolean("bottomButton", true)) "On" else "Off")
         set("lastKey", "Last button the app saw: " + (prefs.getString("lastKey", null) ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
@@ -366,7 +366,7 @@ class RunActivity : Activity() {
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
         col.addView(row("quickBtn", "Bottom button: start · lap · double-press finish") {
-            prefs.edit().putBoolean("quickButton", !prefs.getBoolean("quickButton", true)).apply()
+            prefs.edit().putBoolean("bottomButton", !prefs.getBoolean("bottomButton", true)).apply()
         }.apply {
             addView(label("Press once on the Running screen to start. During a run: press once for a lap (next step in a workout), " +
                 "press twice quickly to finish and save.", C.MUTED, 9f))
@@ -635,7 +635,7 @@ class RunActivity : Activity() {
         val isButton = event.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
             event.keyCode == android.view.KeyEvent.KEYCODE_STEM_PRIMARY ||
             event.keyCode == android.view.KeyEvent.KEYCODE_STEM_1
-        if (!isButton || !prefs.getBoolean("quickButton", true)) return super.dispatchKeyEvent(event)
+        if (!isButton || !prefs.getBoolean("bottomButton", true)) return super.dispatchKeyEvent(event)
         // Only handle it where the button has a run job; elsewhere it's a normal back.
         val runControl = screen == Screen.LIVE ||
             (screen == Screen.START && !Run.isActive && !showSettings && !overlayOpen && editorRotary == null)
