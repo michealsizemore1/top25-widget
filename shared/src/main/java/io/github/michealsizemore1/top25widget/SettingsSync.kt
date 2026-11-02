@@ -67,11 +67,24 @@ object SettingsSync {
         app.getSharedPreferences(prefsName, 0).registerOnSharedPreferenceChangeListener(l)
     }
 
+    private fun valueOf(p: SharedPreferences, k: String, t: T, def: Any): String = when (t) {
+        T.BOOL -> p.getBoolean(k, def as Boolean).toString()
+        T.INT -> p.getInt(k, def as Int).toString()
+        T.FLOAT -> p.getFloat(k, def as Float).toString()
+        T.STRING -> p.getString(k, def as String) ?: ""
+    }
+
+    /**
+     * Sends this device's settings. Each setting carries its own "changed at" time, so a change to one
+     * setting on one device never blocks a different setting changed on the other.
+     */
     fun push(ctx: Context, prefsName: String, me: String) {
         val app = ctx.applicationContext
         Thread {
             try {
                 val p = app.getSharedPreferences(prefsName, 0)
+                val now = System.currentTimeMillis()
+                val e = p.edit()
                 val req = PutDataMapRequest.create(PATH).apply {
                     KEYS.forEach { (k, td) ->
                         if (!p.contains(k)) return@forEach   // only settings actually set on this device
@@ -82,36 +95,59 @@ object SettingsSync {
                             T.FLOAT -> dataMap.putFloat(k, p.getFloat(k, def as Float))
                             T.STRING -> dataMap.putString(k, p.getString(k, def as String) ?: "")
                         }
+                        // Changed here since the last sync? Then it's new as of now.
+                        val v = valueOf(p, k, t, def)
+                        var kat = p.getLong("at_$k", 0L)
+                        if (p.getString("syn_$k", null) != v || kat == 0L) { kat = now; e.putLong("at_$k", kat).putString("syn_$k", v) }
+                        dataMap.putLong("at_$k", kat)
                     }
                     dataMap.putString("from", me)
                     dataMap.putLong("at", p.getLong("settingsAt", 0L))
                 }.asPutDataRequest().setUrgent()
+                applying = true
+                try { e.commit() } finally { applying = false }
                 Tasks.await(Wearable.getDataClient(app).putDataItem(req))
             } catch (e: Exception) { }
         }.start()
     }
 
-    /** Settings from the other device: take them if they're newer than ours. Returns true if applied. */
+    /** Settings from the other device: take each one that changed there more recently. Returns true if any applied. */
     fun apply(ctx: Context, prefsName: String, me: String, m: DataMap): Boolean {
         if (m.getString("from") == me) return false
         val p = ctx.getSharedPreferences(prefsName, 0)
-        val at = m.getLong("at")
-        if (at <= p.getLong("settingsAt", 0L)) return false
+        val legacyAt = m.getLong("at")
+        var any = false
         applying = true
         try {
             val e = p.edit()
             KEYS.forEach { (k, td) ->
                 if (!m.containsKey(k)) return@forEach
-                when (td.first) {
-                    T.BOOL -> e.putBoolean(k, m.getBoolean(k))
-                    T.INT -> e.putInt(k, m.getInt(k))
-                    T.FLOAT -> e.putFloat(k, m.getFloat(k))
-                    T.STRING -> m.getString(k)?.let { if (k != "screens" || it.isNotBlank()) e.putString(k, it) }
+                val (t, def) = td
+                val inAt = if (m.containsKey("at_$k")) m.getLong("at_$k") else legacyAt
+                val take = when {
+                    !p.contains(k) -> true                                         // never set here
+                    p.getString("syn_$k", null) == null -> inAt > p.getLong("settingsAt", 0L)   // first sync with per-setting times
+                    p.getString("syn_$k", null) != valueOf(p, k, t, def) -> false // changed here, not sent yet — ours is newer
+                    else -> inAt > p.getLong("at_$k", 0L)
                 }
+                if (!take) return@forEach
+                val sv: String
+                when (t) {
+                    T.BOOL -> { val v = m.getBoolean(k); e.putBoolean(k, v); sv = v.toString() }
+                    T.INT -> { val v = m.getInt(k); e.putInt(k, v); sv = v.toString() }
+                    T.FLOAT -> { val v = m.getFloat(k); e.putFloat(k, v); sv = v.toString() }
+                    T.STRING -> {
+                        val v = m.getString(k) ?: ""
+                        if (k == "screens" && v.isBlank()) return@forEach
+                        e.putString(k, v); sv = v
+                    }
+                }
+                e.putLong("at_$k", inAt).putString("syn_$k", sv)
+                any = true
             }
-            e.putLong("settingsAt", at)
+            if (any) e.putLong("settingsAt", maxOf(legacyAt, p.getLong("settingsAt", 0L)))
             e.commit()
         } finally { applying = false }
-        return true
+        return any
     }
 }
