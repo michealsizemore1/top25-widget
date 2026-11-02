@@ -544,8 +544,20 @@ class RunActivity : Activity() {
     private var trailCache: Pair<Long, List<io.github.michealsizemore1.top25widget.Trail>>? = null
     private var trailStatus = ""
 
+    private var trailKey = ""
+    private var trailShowAll = false
+
     private fun showTrails(): Unit = overlay { col ->
-        col.addView(label("Trails near me", Color.WHITE, 18f, true))
+        val place = io.github.michealsizemore1.top25widget.TrailSearch.area(this, "run")
+        val radius = io.github.michealsizemore1.top25widget.TrailSearch.radiusMi(this, "run")
+        val longest = io.github.michealsizemore1.top25widget.TrailSearch.sortLongest(this, "run")
+        // Search settings changed (here or on the phone) → search again.
+        val key = "${place?.encode()}|$radius"
+        if (key != trailKey) { trailKey = key; trailCache = null; trailStatus = ""; trailShowAll = false }
+        val from = place?.label?.substringBefore(",")
+        col.addView(label(if (from == null) "Trails near me" else "Trails · $from", Color.WHITE, 18f, true))
+        col.addView(card("Where: " + (from ?: "Near me"), "Tap to change", C.ACCENT) { showTrailWhere() })
+        col.addView(card("Within $radius mi · " + (if (longest) "longest first" else "nearest first"), "Tap to change") { showTrailRange() })
         if (Run.nav != null) col.addView(card("No trail", "Clear ${Run.nav?.trail?.name}", C.STOP) {
             Run.chooseTrail(null, false); io.github.michealsizemore1.top25widget.TrailSync.choose(this, null, false, "watch")
             overlayOpen = false; startBuilt = false; renderStart()
@@ -557,14 +569,83 @@ class RunActivity : Activity() {
             else col.addView(card("Try again", "", C.ACCENT) { trailStatus = ""; showTrails() })
             return@overlay
         }
-        if (cached.isEmpty()) col.addView(label("No mapped trails within about 4 miles.", C.MUTED, 12f))
-        cached.forEach { t ->
+        if (cached.isEmpty()) col.addView(label("No mapped trails within $radius miles.", C.MUTED, 12f))
+        val sorted = io.github.michealsizemore1.top25widget.TrailSearch.sort(cached, longest)
+        (if (trailShowAll) sorted else sorted.take(25)).forEach { t ->
             val mi = t.lengthM / 1609.344
-            col.addView(card(t.name, String.format(java.util.Locale.US, "%.1f mi %s · %s · %s away", mi, if (t.loop) "loop" else "one way",
+            col.addView(card(t.name, String.format(java.util.Locale.US, "%.1f mi %s · %s · %s", mi, if (t.loop) "loop" else "one way",
                 t.difficulty.takeIf { t.elevations != null || t.sac.isNotBlank() } ?: (if (t.surface.isNotBlank()) t.surface else "trail"),
-                distText(t.distToStartM))) { showTrail(t) })
+                distText(t.distToStartM) + if (from == null) " away" else " from $from")) { showTrail(t) })
         }
+        if (!trailShowAll && sorted.size > 25) col.addView(card("Show all ${sorted.size}", "", C.ACCENT) { trailShowAll = true; showTrails() })
         col.addView(card("Refresh", "Search again from here", C.ACCENT) { trailCache = null; trailStatus = ""; showTrails() })
+    }
+
+    /** Where to search: near me, a recent place, or type/say a new one. */
+    private fun showTrailWhere(): Unit = overlay { col ->
+        val TSr = io.github.michealsizemore1.top25widget.TrailSearch
+        col.addView(label("Search where?", Color.WHITE, 18f, true))
+        col.addView(card("Near me", "Uses GPS", C.ACCENT) { TSr.setArea(this, "run", "watch", null); showTrails() })
+        recentPlaces().forEach { pl ->
+            col.addView(card(pl.label.substringBefore(","), pl.label.substringAfter(", ", "")) { TSr.setArea(this, "run", "watch", pl); showTrails() })
+        }
+        col.addView(label("Or type a town:", C.MUTED, 11f).apply { setPadding(0, dp(10), 0, 0) })
+        val input = android.widget.EditText(this).apply {
+            hint = "e.g. Boise"; setSingleLine(); setTextColor(Color.WHITE); setHintTextColor(C.MUTED); textSize = 14f
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            background = rounded(C.CARD, 14); setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        val msg = label("", C.MUTED, 11f)
+        fun go() {
+            val q = input.text.toString().trim(); if (q.isEmpty()) return
+            msg.text = "Looking up $q…"
+            Thread {
+                val found = try { TSr.geocode(q) } catch (e: Exception) { null }
+                runOnUiThread {
+                    when {
+                        found == null -> msg.text = "No connection"
+                        found.isEmpty() -> msg.text = "No place called \"$q\""
+                        found.size == 1 -> { TSr.setArea(this, "run", "watch", found[0]); rememberPlace(found[0]); showTrails() }
+                        else -> overlay { c2 ->
+                            c2.addView(label("Which one?", Color.WHITE, 18f, true))
+                            found.forEach { pl -> c2.addView(card(pl.label.substringBefore(","), pl.label.substringAfter(", ", "")) {
+                                TSr.setArea(this, "run", "watch", pl); rememberPlace(pl); showTrails() }) }
+                            c2.addView(card("Back", "", C.ACCENT) { showTrailWhere() })
+                        }
+                    }
+                }
+            }.start()
+        }
+        input.setOnEditorActionListener { _, _, _ -> go(); true }
+        col.addView(input)
+        col.addView(card("Search", "", C.ACCENT) { go() })
+        col.addView(msg)
+        col.addView(card("Back", "", C.ACCENT) { showTrails() })
+    }
+
+    /** How far, and sort order. */
+    private fun showTrailRange(): Unit = overlay { col ->
+        val TSr = io.github.michealsizemore1.top25widget.TrailSearch
+        val r = TSr.radiusMi(this, "run"); val longest = TSr.sortLongest(this, "run")
+        col.addView(label("How far?", Color.WHITE, 18f, true))
+        TSr.RADII.forEach { mi -> col.addView(card((if (mi == r) "✓ " else "") + "Within $mi mi", "", if (mi == r) C.ACCENT else Color.WHITE) {
+            TSr.setRadius(this, "run", "watch", mi); showTrailRange() }) }
+        col.addView(label("Sort", C.MUTED, 11f).apply { setPadding(0, dp(10), 0, 0) })
+        col.addView(card((if (!longest) "✓ " else "") + "Nearest first", "", if (!longest) C.ACCENT else Color.WHITE) { TSr.setSortLongest(this, "run", "watch", false); showTrailRange() })
+        col.addView(card((if (longest) "✓ " else "") + "Longest first", "", if (longest) C.ACCENT else Color.WHITE) { TSr.setSortLongest(this, "run", "watch", true); showTrailRange() })
+        col.addView(card("Done", "", C.ACCENT) { showTrails() })
+    }
+
+    private fun recentPlaces(): List<io.github.michealsizemore1.top25widget.TrailSearch.Place> {
+        val list = (prefs.getString("trailRecent", "") ?: "").split("\n").mapNotNull { line ->
+            line.split("|").takeIf { it.size == 3 }?.let { io.github.michealsizemore1.top25widget.TrailSearch.Place(it[0], it[1].toDoubleOrNull() ?: return@mapNotNull null, it[2].toDoubleOrNull() ?: return@mapNotNull null) }
+        }.toMutableList()
+        io.github.michealsizemore1.top25widget.TrailSearch.area(this, "run")?.let { cur -> if (list.none { it.label == cur.label }) list.add(0, cur) }
+        return list.take(5)
+    }
+    private fun rememberPlace(pl: io.github.michealsizemore1.top25widget.TrailSearch.Place) {
+        val l = listOf(pl) + recentPlaces().filter { it.label != pl.label }
+        prefs.edit().putString("trailRecent", l.take(5).joinToString("\n") { it.encode() }).apply()
     }
 
     private fun distText(m: Double) = if (m < 160) "${(m * 3.28084).toInt()} ft" else String.format(java.util.Locale.US, "%.1f mi", m / 1609.344)
@@ -572,6 +653,17 @@ class RunActivity : Activity() {
     /** Gets a location (GPS, or the last known one if recent), then trails around it from OpenStreetMap. */
     @android.annotation.SuppressLint("MissingPermission")
     private fun loadTrails() {
+        io.github.michealsizemore1.top25widget.TrailSearch.area(this, "run")?.let { pl ->
+            trailStatus = "Looking for trails…"
+            Thread {
+                trailStatus = try {
+                    trailCache = System.currentTimeMillis() to io.github.michealsizemore1.top25widget.Trails.fetchNearby(pl.lat, pl.lon,
+                        (io.github.michealsizemore1.top25widget.TrailSearch.radiusMi(this, "run") * 1609.344).toInt()); ""
+                } catch (e: Exception) { "Couldn't get trails: ${e.message}" }
+                runOnUiThread { if (overlayOpen) showTrails() }
+            }.start()
+            return
+        }
         if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             trailStatus = "Allow location for Running to find trails"; return
         }
@@ -582,7 +674,8 @@ class RunActivity : Activity() {
             runOnUiThread { if (overlayOpen) showTrails() }
             Thread {
                 trailStatus = try {
-                    val list = io.github.michealsizemore1.top25widget.Trails.fetchNearby(lat, lon)
+                    val list = io.github.michealsizemore1.top25widget.Trails.fetchNearby(lat, lon,
+                        (io.github.michealsizemore1.top25widget.TrailSearch.radiusMi(this, "run") * 1609.344).toInt())
                     trailCache = System.currentTimeMillis() to list
                     ""
                 } catch (e: Exception) { "Couldn't get trails: ${e.message}" }

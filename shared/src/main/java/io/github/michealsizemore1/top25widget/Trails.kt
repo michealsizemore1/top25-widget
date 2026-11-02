@@ -86,7 +86,7 @@ object Trails {
 
     /** Named trails, footpaths, and hiking/running routes within [radiusM] of a point. */
     fun query(lat: Double, lon: Double, radiusM: Int) = """
-        [out:json][timeout:25];
+        [out:json][timeout:60];
         (
           relation["route"~"hiking|foot|running|walking"](around:$radiusM,$lat,$lon);
           way["highway"~"path|footway|track|bridleway|cycleway"]["name"](around:$radiusM,$lat,$lon);
@@ -94,12 +94,12 @@ object Trails {
         out tags geom qt;
     """.trimIndent()
 
-    fun fetchNearby(lat: Double, lon: Double, radiusM: Int = 6000): List<Trail> {
+    fun fetchNearby(lat: Double, lon: Double, radiusM: Int = 6500): List<Trail> {
         var last: Exception? = null
         for (server in SERVERS) {
             try {
                 val conn = (URL(server).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"; doOutput = true; connectTimeout = 15_000; readTimeout = 40_000
+                    requestMethod = "POST"; doOutput = true; connectTimeout = 15_000; readTimeout = 90_000
                     setRequestProperty("User-Agent", "RunningApp/1.0 (personal Wear OS running app)")
                     setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 }
@@ -151,7 +151,7 @@ object Trails {
             .onEach { t -> t.distToStartM = t.points.minOf { Geo.dist(it, me) } }
             .distinctBy { it.name.lowercase() + (it.lengthM / 200).roundToInt() }
             .sortedBy { it.distToStartM }
-            .take(40)
+            .take(150)
     }
 
     private fun geom(a: JSONArray) = (0 until a.length()).map { val p = a.getJSONObject(it); doubleArrayOf(p.getDouble("lat"), p.getDouble("lon")) }
@@ -164,7 +164,7 @@ object Trails {
 
     /**
      * Joins line pieces into the longest single line, flipping pieces as needed so their ends meet
-     * (pieces whose ends are within 25 m count as connected).
+     * (pieces whose ends are within 50 m count as connected — bridges and crossings are often unnamed gaps).
      */
     fun stitch(segs: List<List<DoubleArray>>): List<DoubleArray>? {
         if (segs.isEmpty()) return null
@@ -179,10 +179,10 @@ object Trails {
                 while (it.hasNext()) {
                     val s = it.next()
                     when {
-                        Geo.dist(line.last(), s.first()) < 25 -> { line.addAll(s.drop(1)); it.remove(); grew = true }
-                        Geo.dist(line.last(), s.last()) < 25 -> { line.addAll(s.reversed().drop(1)); it.remove(); grew = true }
-                        Geo.dist(line.first(), s.last()) < 25 -> { line.addAll(0, s.dropLast(1)); it.remove(); grew = true }
-                        Geo.dist(line.first(), s.first()) < 25 -> { line.addAll(0, s.reversed().dropLast(1)); it.remove(); grew = true }
+                        Geo.dist(line.last(), s.first()) < 50 -> { line.addAll(s.drop(1)); it.remove(); grew = true }
+                        Geo.dist(line.last(), s.last()) < 50 -> { line.addAll(s.reversed().drop(1)); it.remove(); grew = true }
+                        Geo.dist(line.first(), s.last()) < 50 -> { line.addAll(0, s.dropLast(1)); it.remove(); grew = true }
+                        Geo.dist(line.first(), s.first()) < 50 -> { line.addAll(0, s.reversed().dropLast(1)); it.remove(); grew = true }
                     }
                 }
             }

@@ -36,6 +36,9 @@ object SettingsSync {
         "voiceEvery" to (T.INT to 0),
         "voiceSteps" to (T.BOOL to true),
         "voiceAlerts" to (T.BOOL to true),
+        "trailArea" to (T.STRING to ""),      // "" = near me, else "label|lat|lon"
+        "trailRadius" to (T.INT to 4),        // miles
+        "trailSort" to (T.STRING to "near"),  // near | long
     )
 
     @Volatile private var applying = false
