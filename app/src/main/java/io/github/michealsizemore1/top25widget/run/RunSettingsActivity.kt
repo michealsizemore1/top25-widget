@@ -56,7 +56,7 @@ class RunSettingsActivity : Activity() {
         val maxHr = input("Max heart rate (bpm)", fmt(RunSettings.hrMax(this)), num)
         val restHr = input("Resting heart rate (bpm)", fmt(RunSettings.hrRest(this)), dec)
         val cp = input("Critical Power (W)", RunSettings.cp(this).toString(), num)
-        val cal = input("Stryd calibration factor", RunSettings.cal(this).toString(), dec)
+        val cal = input("Stryd calibration factor", String.format(java.util.Locale.US, "%.3f", RunSettings.cal(this)), dec)
         val preview = RunUi.text(this, "", RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(8), 0, 0) }
         col.addView(preview)
         fun updatePreview() {

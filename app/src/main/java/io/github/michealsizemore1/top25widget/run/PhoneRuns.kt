@@ -95,7 +95,7 @@ object RunSettings {
 class RunReceiverService : WearableListenerService() {
     /** Buttons tapped on the watch (Command Center, Stryd). */
     override fun onMessageReceived(event: com.google.android.gms.wearable.MessageEvent) {
-        if (event.path.startsWith("/cmd/")) PhoneStatus.command(this, event.path)
+        if (event.path.startsWith("/cmd/")) PhoneStatus.command(this, event.path, event.data)
     }
 
     override fun onDataChanged(events: DataEventBuffer) {

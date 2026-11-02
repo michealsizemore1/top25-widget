@@ -170,6 +170,7 @@ class RunActivity : Activity() {
         fun set(key: String, text: String, color: Int = Color.WHITE) {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
+        set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
@@ -354,6 +355,7 @@ class RunActivity : Activity() {
             if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null && !overlayOpen) renderStart() }
         }
 
+        col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
             prefs.edit().putString("source", Run.source.name.lowercase()).apply()
@@ -461,6 +463,95 @@ class RunActivity : Activity() {
         root.removeAllViews()
         root.addView(col)
         root.isFocusable = true; root.isFocusableInTouchMode = true; root.requestFocus()
+    }
+
+    // ---------------------------------------------------------------- data screens editor (watch)
+
+    private fun saveScreens() {
+        prefs.edit().putString("screens", screens.toString()).apply()
+        builtScreen = -1
+        RunSync.tellPhone(this, "/cmd/screens", screens.toString().toByteArray()) { }
+    }
+
+    private fun overlay(build: (LinearLayout) -> Unit) {
+        overlayOpen = true; startBuilt = false
+        val w = resources.displayMetrics.widthPixels
+        val col = column().apply { setPadding(w / 8, w / 7, w / 8, w / 4) }
+        build(col)
+        root.removeAllViews()
+        root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
+    }
+
+    private fun card(title: String, sub: String, titleColor: Int = Color.WHITE, onTap: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(12), dp(7), dp(12), dp(7))
+        background = rounded(C.CARD, 14)
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
+        addView(label(title, titleColor, 14f, true))
+        if (sub.isNotBlank()) addView(label(sub, C.MUTED, 10f))
+        setOnClickListener { onTap() }
+    }
+
+    /** List of screens: tap one to change it. */
+    private fun showScreensEditor() = overlay { col ->
+        val RF = io.github.michealsizemore1.top25widget.RunFields
+        col.addView(label("Data screens", Color.WHITE, 18f, true))
+        col.addView(label("Swipe through these during a run. Also editable on the phone.", C.MUTED, 10f))
+        for (i in 0 until screens.length()) {
+            val sc = screens.getJSONObject(i)
+            val f = sc.optJSONArray("fields")
+            val names = (0 until RF.size(sc.optString("layout", "6"))).joinToString(" · ") { RF.name(f?.optString(it).orEmpty()) }
+            col.addView(card("Screen ${i + 1}", names) { showScreenEditor(i) })
+        }
+        col.addView(card("+ Add a screen", "", C.ACCENT) {
+            screens.put(org.json.JSONObject().put("layout", "4").put("fields", org.json.JSONArray(listOf("time", "pace", "hr", "distance"))))
+            saveScreens(); showScreenEditor(screens.length() - 1)
+        })
+        col.addView(card("Done", "", C.ACCENT) { overlayOpen = false; startBuilt = false; renderStart() })
+    }
+
+    /** One screen: its layout and each spot, top to bottom. */
+    private fun showScreenEditor(i: Int): Unit = overlay { col ->
+        val RF = io.github.michealsizemore1.top25widget.RunFields
+        val sc = screens.getJSONObject(i)
+        val layout = RF.layout(sc.optString("layout", "6"))
+        val fields = sc.optJSONArray("fields") ?: org.json.JSONArray().also { sc.put("fields", it) }
+        while (fields.length() < layout.rows.sum()) fields.put("time")
+        col.addView(label("Screen ${i + 1}", Color.WHITE, 18f, true))
+        col.addView(card("Layout", layout.name, C.ACCENT) {
+            // Tap to step through the layouts.
+            val next = RF.LAYOUTS[(RF.LAYOUTS.indexOf(layout) + 1) % RF.LAYOUTS.size]
+            sc.put("layout", next.id); saveScreens(); showScreenEditor(i)
+        })
+        var k = 0
+        layout.rows.forEachIndexed { r, count ->
+            repeat(count) { c ->
+                val idx = k++
+                val where = when {
+                    layout.rows.size == 1 -> "Number"
+                    r == 0 -> "Top"
+                    r == layout.rows.size - 1 && count == 1 -> "Bottom"
+                    count == 1 -> "Row ${r + 1}"
+                    else -> "Row ${r + 1} " + (if (c == 0) "left" else "right")
+                }
+                col.addView(card(RF.name(fields.optString(idx)), where) { pickMetric(i, idx) })
+            }
+        }
+        if (screens.length() > 1) col.addView(card("Remove this screen", "", C.STOP) {
+            screens.remove(i); saveScreens(); showScreensEditor()
+        })
+        col.addView(card("Back", "", C.ACCENT) { showScreensEditor() })
+    }
+
+    private fun pickMetric(i: Int, idx: Int) = overlay { col ->
+        val RF = io.github.michealsizemore1.top25widget.RunFields
+        col.addView(label("Show", Color.WHITE, 18f, true))
+        RF.METRICS.forEach { (key, name) ->
+            col.addView(card(name, "") {
+                screens.getJSONObject(i).optJSONArray("fields")?.put(idx, key)
+                saveScreens(); showScreenEditor(i)
+            })
+        }
     }
 
     /** Pick today's planned workout, one from the library, or a free run. */

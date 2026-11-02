@@ -34,8 +34,12 @@ object PhoneStatus {
     }
 
     /** A button on the watch was tapped. */
-    fun command(ctx: Context, path: String) {
+    fun command(ctx: Context, path: String, data: ByteArray = ByteArray(0)) {
         when (path) {
+            // Data screens changed on the watch: keep the phone's copy the same (no need to send back).
+            "/cmd/screens" -> try {
+                ctx.getSharedPreferences("runsettings", 0).edit().putString("screens", org.json.JSONArray(String(data)).toString()).apply()
+            } catch (e: Exception) { }
             "/cmd/cc" -> {
                 // The Command Center opens in the phone's browser, which needs a tap on the phone.
                 val n = unsentCc(ctx).size

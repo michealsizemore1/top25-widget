@@ -42,12 +42,12 @@ object RunSync {
     }
 
     /** Asks the phone to do something (a Command Center / Stryd button on the watch). */
-    fun tellPhone(ctx: Context, path: String, done: (Boolean) -> Unit) {
+    fun tellPhone(ctx: Context, path: String, data: ByteArray = ByteArray(0), done: (Boolean) -> Unit) {
         val app = ctx.applicationContext
         Thread {
             val ok = try {
                 val nodes = com.google.android.gms.tasks.Tasks.await(Wearable.getNodeClient(app).connectedNodes)
-                nodes.forEach { n -> com.google.android.gms.tasks.Tasks.await(Wearable.getMessageClient(app).sendMessage(n.id, path, ByteArray(0))) }
+                nodes.forEach { n -> com.google.android.gms.tasks.Tasks.await(Wearable.getMessageClient(app).sendMessage(n.id, path, data)) }
                 nodes.isNotEmpty()
             } catch (e: Exception) { false }
             android.os.Handler(android.os.Looper.getMainLooper()).post { done(ok) }
