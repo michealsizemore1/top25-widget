@@ -68,6 +68,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
             Speaker.onTick()
             updateGps()
             grabStartLocation()
+            try { LiveTrack.onTick(this@RunService) } catch (e: Exception) { }
             if (Run.isActive && ++saveCounter % 30 == 0) {
                 try { RunStore.saveCurrent(this@RunService, Run.toJson()) } catch (e: Exception) { }
             }
@@ -214,7 +215,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
 
     /** GPS runs only when it's the pace source or a GPS track is wanted. */
     private fun updateGps() {
-        val want = (Run.source == Run.Source.GPS || Run.recordGpsTrack || Run.nav != null) &&
+        val want = (Run.source == Run.Source.GPS || Run.recordGpsTrack || Run.nav != null || LiveTrack.enabled(this)) &&
             has(this, Manifest.permission.ACCESS_FINE_LOCATION)
         if (want && !gpsOn) startGps() else if (!want && gpsOn) stopGps()
     }

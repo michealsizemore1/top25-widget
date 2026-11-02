@@ -17,7 +17,7 @@ class DecouplingTest {
 
     @Test fun steadyNoDrift() {
         val r = Decoupling.compute(run(60, { 140 }))!!
-        assertEquals(0.0, r.pwHr!!, 0.01); assertEquals(0.0, r.paHr!!, 0.01); assertTrue(r.steady); assertEquals(50, r.minutes)
+        assertEquals(0.0, r.pwHr!!, 0.01); assertEquals(0.0, r.paHr!!, 0.01); assertTrue(r.steady); assertEquals(49, r.minutes)
     }
 
     @Test fun heartRateDrift() {

@@ -249,6 +249,7 @@ class RunActivity : Activity() {
         set("hr", hrText, if (Run.strapActive || (!Run.useStrap && Run.heartRate > 0)) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
+        set("live", if (!prefs.getBoolean("liveOn", false)) "Off" else if (Run.isActive) "On · ${LiveTrack.status}" else "On")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
         calRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
 
@@ -474,6 +475,10 @@ class RunActivity : Activity() {
         col.addView(row("track", "GPS map track (uses battery)") {
             Run.recordGpsTrack = !Run.recordGpsTrack; prefs.edit().putBoolean("track", Run.recordGpsTrack).apply()
         }.also { trackRow = it })
+        col.addView(row("live", "LiveTrack (GPS on, shares your run)") {
+            if (prefs.getString("liveDb", "").isNullOrBlank()) flash("Set up LiveTrack in the phone app first")
+            else prefs.edit().putBoolean("liveOn", !prefs.getBoolean("liveOn", false)).apply()
+        })
 
         col.addView(label("Done", Color.BLACK, 16f, true).apply {
             background = rounded(C.ACCENT, 24)

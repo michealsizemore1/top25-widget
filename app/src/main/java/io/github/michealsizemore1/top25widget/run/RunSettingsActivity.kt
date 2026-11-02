@@ -52,6 +52,10 @@ class RunSettingsActivity : Activity() {
             startActivity(Intent(ctx, ScreensActivity::class.java))
         }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
 
+        col.addView(RunUi.button(this, "LiveTrack ›", 0xFF4FA3E0.toInt(), Color.WHITE) {
+            startActivity(Intent(ctx, LiveTrackActivity::class.java))
+        }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
+
         // ---- run options (same as the watch's Settings; changes on either show on both)
         col.addView(RunUi.section(this, "RUN OPTIONS · SAME ON WATCH"))
         fun switch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) =

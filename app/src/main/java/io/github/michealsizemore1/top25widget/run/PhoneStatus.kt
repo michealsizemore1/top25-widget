@@ -62,6 +62,8 @@ object PhoneStatus {
                     try { nm.notify(904, n) } catch (e: SecurityException) { }
                 }
             }
+            "/cmd/livestart" -> Live.started(ctx)
+            "/cmd/livealert" -> Live.alert(ctx, String(data))
             "/cmd/stryd" -> {
                 if (!StrydCloud.connected(ctx)) {
                     notify(ctx, 903, "Stryd isn't connected", "Tap to sign in to Stryd in Run settings",

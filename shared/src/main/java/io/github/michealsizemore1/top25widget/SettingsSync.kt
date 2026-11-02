@@ -39,6 +39,11 @@ object SettingsSync {
         "trailArea" to (T.STRING to ""),      // "" = near me, else "label|lat|lon"
         "trailRadius" to (T.INT to 4),        // miles
         "trailSort" to (T.STRING to "near"),  // near | long
+        "liveOn" to (T.BOOL to false),        // LiveTrack
+        "liveDb" to (T.STRING to ""),         // Firebase Realtime Database URL
+        "liveId" to (T.STRING to ""),         // private tracking id (part of the link)
+        "liveName" to (T.STRING to ""),
+        "liveStopMin" to (T.INT to 10),       // alert after this many minutes not moving (0 = off)
     )
 
     @Volatile private var applying = false
