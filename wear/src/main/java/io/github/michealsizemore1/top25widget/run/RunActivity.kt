@@ -467,12 +467,17 @@ class RunActivity : Activity() {
         fun outline(x: org.json.JSONObject) =
             io.github.michealsizemore1.top25widget.Workouts.outline(x, Run.hrMax, Run.hrRest, Run.criticalPower).take(3).joinToString(" · ")
         col.addView(item("Free run", "No targets", null))
-        // Today and the rest of the week from the plan.
-        if (WatchWorkouts.upcoming(this, 7).isNotEmpty()) col.addView(label("THIS WEEK", C.MUTED, 10f, true).apply { setPadding(0, dp(8), 0, 0) })
+        // The whole plan from today on, by week (like the phone's Plan tab).
         val dayName = java.text.SimpleDateFormat("EEE M/d", java.util.Locale.getDefault())
+        val weekName = java.text.SimpleDateFormat("'WEEK OF' MMM d", java.util.Locale.getDefault())
         val keyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-        WatchWorkouts.upcoming(this, 7).forEachIndexed { i, (d, wk) ->
-            val label = if (d == keyFmt.format(java.util.Date())) "Today" else (keyFmt.parse(d)?.let { dayName.format(it) } ?: d)
+        var lastWeek = ""
+        WatchWorkouts.upcoming(this, 400).forEach { (d, wk) ->
+            val date = keyFmt.parse(d) ?: return@forEach
+            val wkStart = java.util.Calendar.getInstance().apply { time = date; set(java.util.Calendar.DAY_OF_WEEK, firstDayOfWeek) }.time
+            val header = weekName.format(wkStart).uppercase()
+            if (header != lastWeek) { lastWeek = header; col.addView(label(header, C.MUTED, 10f, true).apply { setPadding(0, dp(8), 0, 0) }) }
+            val label = if (d == keyFmt.format(java.util.Date())) "Today" else dayName.format(date)
             col.addView(item("$label: " + wk.optString("name"), outline(wk), wk))
         }
         if (WatchWorkouts.library(this).isNotEmpty()) col.addView(label("LIBRARY", C.MUTED, 10f, true).apply { setPadding(0, dp(10), 0, 0) })

@@ -89,7 +89,7 @@ object WorkoutStore {
         return n
     }
 
-    /** Sends the library and the next 6 weeks of the plan to the watch. */
+    /** Sends the library and the whole plan (today onward) to the watch. */
     fun pushToWatch(ctx: Context) {
         val app = ctx.applicationContext
         Thread {
@@ -97,7 +97,7 @@ object WorkoutStore {
                 val all = plan(app)
                 val cal = Calendar.getInstance()
                 val upcoming = JSONObject()
-                repeat(42) {
+                repeat(400) {   // the whole plan from today on
                     val d = dayFmt.format(cal.time)
                     all.optJSONObject(d)?.let { upcoming.put(d, it) }
                     cal.add(Calendar.DAY_OF_MONTH, 1)

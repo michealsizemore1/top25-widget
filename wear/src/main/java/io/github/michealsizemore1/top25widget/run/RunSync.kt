@@ -32,6 +32,7 @@ object RunSync {
                 val req = PutDataMapRequest.create("/watchinfo").apply {
                     dataMap.putString("version", v)
                     dataMap.putInt("planDays", WatchWorkouts.planCount(app))
+                    dataMap.putString("planLast", WatchWorkouts.lastDate(app))
                     dataMap.putInt("library", WatchWorkouts.library(app).size)
                     dataMap.putLong("receivedAt", WatchWorkouts.receivedAt(app))
                 }.asPutDataRequest().setUrgent()
@@ -87,6 +88,7 @@ object WatchWorkouts {
     /** Planned workout for a date (yyyy-MM-dd), with the plan's text in its notes. */
     fun planFor(ctx: Context, date: String): org.json.JSONObject? = load(ctx).optJSONObject("plan")?.optJSONObject(date)
 
+    fun lastDate(ctx: Context): String = load(ctx).optJSONObject("plan")?.keys()?.asSequence()?.maxOrNull().orEmpty()
     fun planCount(ctx: Context) = load(ctx).optJSONObject("plan")?.length() ?: 0
     fun receivedAt(ctx: Context) = file(ctx).takeIf { it.exists() }?.lastModified() ?: 0L
 

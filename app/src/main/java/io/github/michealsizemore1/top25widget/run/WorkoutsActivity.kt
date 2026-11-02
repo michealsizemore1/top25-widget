@@ -61,8 +61,8 @@ class WorkoutsActivity : Activity() {
         fun dp(v: Int) = RunUi.dp(ctx, v)
         val plan = WorkoutStore.plan(this)
         col.addView(RunUi.text(this,
-            "Workouts go to the watch automatically (the next 6 weeks of the plan plus your library). On the watch, " +
-            "today's workout is preloaded on the Run screen; tap Workout to pick another day this week or a library workout. " +
+            "Workouts go to the watch automatically (your whole plan plus your library). On the watch, today's workout " +
+            "is preloaded on the Running screen; tap Workouts & Plan to pick any planned day or a library workout. " +
             "To bring in your Command Center plan, open it and tap " +
             "“Send plan to Running app” under Upcoming / Active Training Plan.", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(12), dp(4), 0) })
         col.addView(RunUi.button(this, "+ Add a workout to a date", RunUi.CARD, Color.WHITE) { pickDateThenWorkout() }.apply {
@@ -145,7 +145,10 @@ class WorkoutsActivity : Activity() {
                 when {
                     m == null -> "Watch hasn't confirmed yet. Open Run on the watch once."
                     m.getLong("receivedAt") == 0L -> "Watch hasn't received workouts yet."
-                    else -> "✓ Watch has ${m.getInt("planDays")} planned days + ${m.getInt("library")} library workouts\n" +
+                    else -> "✓ Watch has ${m.getInt("planDays")} planned days" +
+                        (m.getString("planLast")?.takeIf { it.isNotBlank() }?.let { d ->
+                            " through " + (WorkoutStore.dayFmt.parse(d)?.let { SimpleDateFormat("MMM d", Locale.getDefault()).format(it) } ?: d)
+                        } ?: "") + " + ${m.getInt("library")} library workouts\n" +
                         "updated " + SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(java.util.Date(m.getLong("receivedAt")))
                 }
             } catch (e: Exception) { "Watch not connected" }
