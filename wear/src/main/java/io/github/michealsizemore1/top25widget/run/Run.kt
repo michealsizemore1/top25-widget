@@ -195,6 +195,8 @@ object Run {
     @Volatile var gpsFix = false
     @Volatile var gpsStatus = "Off"
     @Volatile var gpsSpeed = 0.0            // m/s
+    /** Where the run started (one quick reading even with GPS off) — for the weather lookup. */
+    @Volatile var startLoc: DoubleArray? = null
     @Volatile var gpsLat = 0.0
     @Volatile var gpsLon = 0.0
     @Volatile var gpsLastUpdate = 0L
@@ -296,6 +298,7 @@ object Run {
 
     private fun reset() {
         state = State.IDLE; startMillis = 0; movingSeconds = 0; distance = 0.0
+        startLoc = null
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
         power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
         zoneSeconds.fill(0); lapPowerSum = 0; lapPowerCount = 0; maxPower = 0
@@ -321,6 +324,7 @@ object Run {
 
     fun onGps(lat: Double, lon: Double, speed: Double, metersMoved: Double) {
         gpsLat = lat; gpsLon = lon; gpsSpeed = speed; gpsFix = true; gpsLastUpdate = System.currentTimeMillis()
+        if (startLoc == null && state == State.RUNNING) startLoc = doubleArrayOf(lat, lon)
         if (state == State.RUNNING || state == State.AUTO_PAUSED) {
             if (state == State.RUNNING) gpsPendingMeters += metersMoved
             if (recordGpsTrack || source == Source.GPS || nav != null) track += doubleArrayOf(lat, lon, movingSeconds.toDouble(), elapsedSeconds.toDouble())
@@ -432,6 +436,7 @@ object Run {
 
     fun toJson(endMillis: Long = System.currentTimeMillis()) = JSONObject().apply {
         put("start", startMillis); put("end", endMillis)
+        startLoc?.let { put("startLoc", JSONArray(listOf(it[0], it[1]))) }
         put("source", source.name.lowercase())
         put("movingSeconds", movingSeconds); put("elapsedSeconds", ((endMillis - startMillis) / 1000).toInt())
         put("distance", distance)

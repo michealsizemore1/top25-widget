@@ -22,9 +22,10 @@ object RunWeather {
 
     fun has(run: JSONObject) = run.optJSONObject("weather")?.has("tempF") == true
 
-    /** Where the run was: first GPS point, else its trail start, else the phone's last location, else home. */
+    /** Where the run was: the watch's start reading, else first GPS point, else the phone's last location, else home. */
     @SuppressLint("MissingPermission")
     private fun place(ctx: Context, run: JSONObject): DoubleArray {
+        run.optJSONArray("startLoc")?.takeIf { it.length() == 2 }?.let { return doubleArrayOf(it.optDouble(0), it.optDouble(1)) }
         run.optJSONArray("track")?.optJSONArray(0)?.let { p -> return doubleArrayOf(p.optDouble(0), p.optDouble(1)) }
         if (ctx.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             try {

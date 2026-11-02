@@ -67,6 +67,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
             Run.tick()
             Speaker.onTick()
             updateGps()
+            grabStartLocation()
             if (Run.isActive && ++saveCounter % 30 == 0) {
                 try { RunStore.saveCurrent(this@RunService, Run.toJson()) } catch (e: Exception) { }
             }
@@ -188,6 +189,28 @@ class RunService : Service(), SensorEventListener, LocationListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     // ---------------------------------------------------------------- GPS
+
+    private var startLocTriedFor = 0L
+
+    /** One quick location reading at the start of each run (even with GPS off), for weather/AQI. */
+    @SuppressLint("MissingPermission")
+    private fun grabStartLocation() {
+        if (Run.state != Run.State.RUNNING || Run.startLoc != null || startLocTriedFor == Run.startMillis) return
+        if (!has(this, Manifest.permission.ACCESS_FINE_LOCATION) && !has(this, Manifest.permission.ACCESS_COARSE_LOCATION)) return
+        startLocTriedFor = Run.startMillis
+        val forRun = Run.startMillis
+        try {
+            val lm = getSystemService(LocationManager::class.java)
+            val providers = listOf("fused", LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            providers.mapNotNull { try { lm.getLastKnownLocation(it) } catch (e: Exception) { null } }
+                .filter { System.currentTimeMillis() - it.time < 5 * 60_000 }.maxByOrNull { it.time }
+                ?.let { Run.startLoc = doubleArrayOf(it.latitude, it.longitude); return }
+            val p = providers.firstOrNull { try { lm.isProviderEnabled(it) } catch (e: Exception) { false } } ?: return
+            if (Build.VERSION.SDK_INT >= 30) lm.getCurrentLocation(p, null, mainExecutor) { loc ->
+                if (loc != null && Run.startMillis == forRun && Run.startLoc == null) Run.startLoc = doubleArrayOf(loc.latitude, loc.longitude)
+            }
+        } catch (e: Exception) { }
+    }
 
     /** GPS runs only when it's the pace source or a GPS track is wanted. */
     private fun updateGps() {
