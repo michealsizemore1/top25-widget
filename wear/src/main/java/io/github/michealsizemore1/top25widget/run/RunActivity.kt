@@ -40,7 +40,11 @@ class RunActivity : Activity() {
         const val PAUSE = 0xFFFFB547.toInt()
         const val STOP = 0xFFE5484D.toInt()
         const val OK = 0xFF46C46E.toInt()
+        const val BG = 0xFF121A17.toInt()      // same background as the phone app
     }
+
+    /** Start area: phone-style home, or the settings list. */
+    private var showSettings = false
 
     private enum class Screen { START, LIVE, SUMMARY }
 
@@ -64,7 +68,7 @@ class RunActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) { wrongDevice = true; return }
-        root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        root = FrameLayout(this).apply { setBackgroundColor(C.BG) }
         setContentView(root)
 
         Run.source = if (prefs.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
@@ -149,7 +153,7 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
-        set("workout", (Run.workout?.optString("name") ?: "Free run") + " ▸", C.ACCENT)
+        set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
             val w = Run.workout
             text = if (w == null) "" else io.github.michealsizemore1.top25widget.Workouts.outline(w, Run.hrMax, Run.hrRest, Run.criticalPower)
@@ -185,7 +189,7 @@ class RunActivity : Activity() {
 
         val ready = if (Run.source == Run.Source.STRYD) Run.strydConnected else Run.gpsFix
         startValues["startBtn"]?.apply {
-            text = if (ready) "START" else "START ANYWAY"
+            text = if (!ready) "START ANYWAY" else if (Run.workout != null) "START WORKOUT" else "START"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, if (ready) 20f else 14f)
         }
     }
@@ -193,9 +197,109 @@ class RunActivity : Activity() {
     private fun buildStart() {
         startBuilt = true
         startValues.clear()
+        root.setBackgroundColor(C.BG)
+        if (showSettings) buildSettings() else buildHome()
+    }
+
+    /** Miles and runs since the start of this week, from the runs saved on the watch. */
+    private fun weekTotals(): Pair<Double, Int> {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.DAY_OF_WEEK, firstDayOfWeek)
+        }
+        val from = cal.timeInMillis
+        var meters = 0.0; var n = 0
+        RunStore.list(this).forEach { f ->
+            if ((f.nameWithoutExtension.toLongOrNull() ?: 0L) < from) return@forEach
+            // Only the totals near the top of the file are needed — avoid parsing every sample.
+            val head = f.bufferedReader().use { r -> CharArray(400).let { buf -> String(buf, 0, r.read(buf).coerceAtLeast(0)) } }
+            Regex("\"distance\":([0-9.]+)").find(head)?.groupValues?.get(1)?.toDoubleOrNull()?.let { meters += it; n++ }
+        }
+        return meters to n
+    }
+
+    /** Home, laid out like the phone's Running screen. */
+    private fun buildHome() {
+        val w = resources.displayMetrics.widthPixels
+        val col = column().apply { setPadding(w / 9, w / 8, w / 9, w / 5) }
+        fun card() = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = rounded(C.CARD, 16)
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+        }
+        col.addView(label("Running", Color.WHITE, 20f, true))
+
+        // This week.
+        val (meters, runs) = weekTotals()
+        col.addView(card().apply {
+            addView(LinearLayout(this@RunActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(column().apply {
+                    addView(label(Run.miles(meters), C.ACCENT, 20f, true)); addView(label("mi this week", C.MUTED, 10f))
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                addView(column().apply {
+                    addView(label("$runs", Color.WHITE, 20f, true)); addView(label("runs", C.MUTED, 10f))
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            })
+        })
+
+        // Today's workout (tap to change).
+        col.addView(card().apply {
+            addView(label("TODAY", C.MUTED, 10f, true))
+            addView(label("", Color.WHITE, 15f, true).also { startValues["workout"] = it })
+            addView(label("", C.MUTED, 10f).apply { startValues["workoutOutline"] = this; visibility = View.GONE })
+            setOnClickListener { showWorkoutPicker() }
+        })
+
+        col.addView(label("START", Color.BLACK, 20f, true).apply {
+            startValues["startBtn"] = this
+            background = rounded(C.ACCENT, 30)
+            setPadding(0, dp(12), 0, dp(12))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+            setOnClickListener { startRun() }
+        })
+
+        // Sensors at a glance.
+        col.addView(card().apply {
+            addView(label("Stryd", C.MUTED, 10f))
+            addView(label("", Color.WHITE, 12f, true).also { startValues["stryd"] = it })
+            addView(label("Heart rate", C.MUTED, 10f).apply { setPadding(0, dp(4), 0, 0) })
+            addView(label("", Color.WHITE, 12f, true).also { startValues["hr"] = it })
+            addView(label("GPS", C.MUTED, 10f).apply { setPadding(0, dp(4), 0, 0) })
+            addView(label("", Color.WHITE, 12f, true).also { startValues["gps"] = it })
+            setOnClickListener {
+                if (!Run.strydConnected) RunService.instance?.pairStryd()
+                if (Run.useStrap && !Run.strapActive) RunService.instance?.pairStrap()
+            }
+        })
+
+        fun navButton(text: String, color: Int, textColor: Int, onClick: () -> Unit) = label(text, textColor, 14f, true).apply {
+            background = rounded(color, 22)
+            setPadding(0, dp(9), 0, dp(9))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+            setOnClickListener { onClick() }
+        }
+        col.addView(navButton("Workouts & Plan", C.ACCENT, Color.BLACK) { showWorkoutPicker() })
+        col.addView(navButton("History", C.CARD, Color.WHITE) { startActivity(Intent(this, RunHistoryActivity::class.java)) })
+        col.addView(navButton("Settings", C.CARD, Color.WHITE) { showSettings = true; startBuilt = false; renderStart() })
+
+        root.removeAllViews()
+        root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
+    }
+
+    private fun startRun() {
+        if (!RunService.running) RunService.start(this)
+        Run.start()
+        screen = Screen.LIVE; page = 1; liveBuilt = false   // with a workout, page 1 is its step screen
+        render()
+    }
+
+    /** All the run settings (the phone's Run settings send zones here too). */
+    private fun buildSettings() {
         val w = resources.displayMetrics.widthPixels
         val col = column().apply { setPadding(w / 8, w / 7, w / 8, w / 5) }
-        col.addView(label("RUN", C.ACCENT, 15f, true).apply { letterSpacing = 0.15f })
+        col.addView(label("Settings", Color.WHITE, 18f, true))
 
         fun row(key: String, title: String, onTap: (() -> Unit)?) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -207,9 +311,6 @@ class RunActivity : Activity() {
             if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null && !overlayOpen) renderStart() }
         }
 
-        col.addView(row("workout", "Workout") { showWorkoutPicker() }.apply {
-            addView(label("", C.MUTED, 10f).apply { startValues["workoutOutline"] = this; visibility = View.GONE })
-        })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
             prefs.edit().putString("source", Run.source.name.lowercase()).apply()
@@ -254,21 +355,11 @@ class RunActivity : Activity() {
             Run.recordGpsTrack = !Run.recordGpsTrack; prefs.edit().putBoolean("track", Run.recordGpsTrack).apply()
         }.also { trackRow = it })
 
-        col.addView(label("START", Color.BLACK, 20f, true).apply {
-            startValues["startBtn"] = this
-            background = rounded(C.ACCENT, 30)
-            setPadding(0, dp(14), 0, dp(14))
+        col.addView(label("Done", Color.BLACK, 16f, true).apply {
+            background = rounded(C.ACCENT, 24)
+            setPadding(0, dp(10), 0, dp(10))
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) }
-            setOnClickListener {
-                if (!RunService.running) RunService.start(this@RunActivity)
-                Run.start()
-                screen = Screen.LIVE; page = 1; liveBuilt = false   // with a workout, page 1 is its step screen
-                render()
-            }
-        })
-        col.addView(label("History ›", C.MUTED, 13f, true).apply {
-            setPadding(0, dp(14), 0, 0)
-            setOnClickListener { startActivity(Intent(this@RunActivity, RunHistoryActivity::class.java)) }
+            setOnClickListener { showSettings = false; startBuilt = false; renderStart() }
         })
         col.addView(label("Watch app " + packageManager.getPackageInfo(packageName, 0).versionName, C.DIM, 10f).apply {
             setPadding(0, dp(12), 0, 0)
@@ -335,7 +426,7 @@ class RunActivity : Activity() {
         startBuilt = false
         val w = resources.displayMetrics.widthPixels
         val col = column().apply { setPadding(w / 8, w / 7, w / 8, w / 4) }
-        col.addView(label("WORKOUT", C.ACCENT, 13f, true).apply { letterSpacing = 0.12f })
+        col.addView(label("Workouts", Color.WHITE, 18f, true))
         fun item(title: String, sub: String, workout: org.json.JSONObject?) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(7), dp(12), dp(7))
@@ -352,6 +443,7 @@ class RunActivity : Activity() {
             io.github.michealsizemore1.top25widget.Workouts.outline(x, Run.hrMax, Run.hrRest, Run.criticalPower).take(3).joinToString(" · ")
         col.addView(item("Free run", "No targets", null))
         // Today and the rest of the week from the plan.
+        if (WatchWorkouts.upcoming(this, 7).isNotEmpty()) col.addView(label("THIS WEEK", C.MUTED, 10f, true).apply { setPadding(0, dp(8), 0, 0) })
         val dayName = java.text.SimpleDateFormat("EEE M/d", java.util.Locale.getDefault())
         val keyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
         WatchWorkouts.upcoming(this, 7).forEachIndexed { i, (d, wk) ->
@@ -370,6 +462,7 @@ class RunActivity : Activity() {
     override fun onBackPressed() {
         // Back (or swipe) from a number editor returns to the start screen without saving.
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
+        if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -679,7 +772,7 @@ class RunActivity : Activity() {
         screen = Screen.SUMMARY
         liveBuilt = false
         root.removeAllViews()
-        root.setBackgroundColor(Color.BLACK)
+        root.setBackgroundColor(C.BG)
         root.addView(RunViews.summary(this, json, onDone = { finish() }))
     }
 

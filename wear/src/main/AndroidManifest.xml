@@ -45,7 +45,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_run"
             android:roundIcon="@drawable/ic_launcher_run"
-            android:label="Run"
+            android:label="Running"
             android:launchMode="singleTask"
             android:taskAffinity="io.github.michealsizemore1.top25widget.run">
             <intent-filter>

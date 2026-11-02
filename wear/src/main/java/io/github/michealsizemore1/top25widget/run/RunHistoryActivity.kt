@@ -31,22 +31,33 @@ class RunHistoryActivity : Activity() {
     private fun showList() {
         val files = RunStore.list(this)
         val col = RunViews.column(this)
-        col.addView(RunViews.label(this, "HISTORY", RunViews.ACCENT, 14f, true).apply { letterSpacing = 0.15f })
+        col.addView(RunViews.label(this, "History", Color.WHITE, 18f, true))
         if (files.isEmpty()) {
             col.addView(RunViews.label(this, "No runs yet", RunViews.MUTED, 14f).apply { setPadding(0, RunViews.dp(this@RunHistoryActivity, 10), 0, 0) })
         }
         files.forEach { f ->
             val json = RunStore.read(f) ?: return@forEach
+            // Same card as the phone's run list: title, date, miles / time / pace, HR / power.
             col.addView(RunViews.card(this).apply {
-                addView(RunViews.label(context, RunViews.date(json.optLong("start")), RunViews.MUTED, 11f))
-                addView(RunViews.label(context,
-                    "${Run.miles(json.optDouble("distance"))} mi · ${Run.clock(json.optInt("movingSeconds"))}",
-                    Color.WHITE, 15f, true))
-                addView(RunViews.label(context,
-                    "${Run.paceFor(json.optInt("movingSeconds"), json.optDouble("distance"))} /mi" +
-                        (json.optInt("avgPower").takeIf { it > 0 }?.let { " · $it W" } ?: "") +
-                        (json.optInt("avgHr").takeIf { it > 0 }?.let { " · $it bpm" } ?: ""),
-                    RunViews.ACCENT, 12f))
+                addView(RunViews.label(context, RunViews.title(json), Color.WHITE, 15f, true))
+                addView(RunViews.label(context, RunViews.date(json.optLong("start")), RunViews.MUTED, 10f))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, RunViews.dp(context, 4), 0, 0)
+                    fun stat(v: String, l: String, c: Int) = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(RunViews.label(context, v, c, 14f, true)); addView(RunViews.label(context, l, RunViews.MUTED, 9f))
+                    }
+                    addView(stat(Run.miles(json.optDouble("distance")), "miles", RunViews.ACCENT), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(stat(Run.clock(json.optInt("movingSeconds")), "time", Color.WHITE), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(stat(Run.paceFor(json.optInt("movingSeconds"), json.optDouble("distance")), "pace", Color.WHITE), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                })
+                val extra = listOfNotNull(
+                    json.optInt("avgHr").takeIf { it > 0 }?.let { "$it bpm" },
+                    json.optInt("avgPower").takeIf { it > 0 }?.let { "$it W" },
+                    json.optJSONObject("workout")?.optString("name"),
+                ).joinToString(" · ")
+                if (extra.isNotEmpty()) addView(RunViews.label(context, extra, RunViews.MUTED, 10f).apply { setPadding(0, RunViews.dp(context, 3), 0, 0) })
                 setOnClickListener { showRun(f, json) }
             })
         }
@@ -73,9 +84,16 @@ object RunViews {
     const val ACCENT = 0xFFD4E635.toInt()
     const val MUTED = 0xFF9AA3A0.toInt()
     const val CARD = 0xFF1C2421.toInt()
+    const val PAUSE_COLOR = 0xFFFFB547.toInt()
     const val STOP = 0xFFE5484D.toInt()
 
     fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
+
+    /** "Morning Run", "Evening Run"… — the same names the phone uses. */
+    fun title(json: JSONObject): String {
+        val h = java.util.Calendar.getInstance().apply { timeInMillis = json.optLong("start") }.get(java.util.Calendar.HOUR_OF_DAY)
+        return when (h) { in 4..11 -> "Morning Run"; in 12..16 -> "Afternoon Run"; in 17..20 -> "Evening Run"; else -> "Night Run" }
+    }
 
     fun date(ms: Long): String = SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault()).format(Date(ms))
 
@@ -103,7 +121,7 @@ object RunViews {
     }
 
     fun scroll(ctx: Context, content: View) = ScrollView(ctx).apply {
-        setBackgroundColor(Color.BLACK)
+        setBackgroundColor(0xFF121A17.toInt())   // same background as the phone app
         isVerticalScrollBarEnabled = false
         addView(content)
         requestFocus()   // bezel scrolls
@@ -148,7 +166,8 @@ object RunViews {
         val col = column(ctx)
         val sec = json.optInt("movingSeconds")
         val meters = json.optDouble("distance")
-        col.addView(label(ctx, if (json.optBoolean("recovered")) "RECOVERED RUN" else "RUN SAVED", ACCENT, 13f, true).apply { letterSpacing = 0.12f })
+        col.addView(label(ctx, title(json), Color.WHITE, 18f, true))
+        if (json.optBoolean("recovered")) col.addView(label(ctx, "recovered after a restart", PAUSE_COLOR, 10f))
         col.addView(label(ctx, date(json.optLong("start")), MUTED, 11f))
         json.optJSONObject("workout")?.let { w ->
             col.addView(label(ctx, w.optString("name") + if (w.optBoolean("completed")) " ✓" else " (partial)", ACCENT, 12f, true))
