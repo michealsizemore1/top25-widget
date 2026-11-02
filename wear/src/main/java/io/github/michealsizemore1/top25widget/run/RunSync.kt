@@ -166,6 +166,7 @@ class RunSettingsListener : WearableListenerService() {
             if (m.containsKey("hrMax")) { Run.hrMax = m.getDouble("hrMax"); p.putFloat("hrMax", Run.hrMax.toFloat()) }
             if (m.containsKey("hrRest")) { Run.hrRest = m.getDouble("hrRest"); p.putFloat("hrRest", Run.hrRest.toFloat()) }
             if (m.containsKey("cp")) { Run.criticalPower = m.getInt("cp"); p.putInt("cp", Run.criticalPower) }
+            if (m.containsKey("screens")) p.putString("screens", m.getString("screens"))
             if (m.containsKey("cal")) { Run.strydCalibration = m.getDouble("cal"); p.putFloat("cal", Run.strydCalibration.toFloat()) }
             p.apply()
         }

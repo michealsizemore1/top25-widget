@@ -59,7 +59,16 @@ class RunActivity : Activity() {
     /** True while the workout picker covers the start screen. */
     private var overlayOpen = false
     /** Live pages in order: 0 controls, 7 workout step (only with a workout), 1 main, 2 heart, 3 power, 4 lap, 5 averages, 6 stress. */
-    private fun pageOrder() = if (Run.hasWorkout) listOf(0, 7, 1, 2, 3, 4, 5, 6) else listOf(0, 1, 2, 3, 4, 5, 6)
+    /** Live pages: 0 controls, 7 workout step (with a workout), then your data screens (100 + index). */
+    private fun pageOrder() = listOf(0) + (if (Run.hasWorkout) listOf(7) else emptyList()) + (0 until screens.length()).map { 100 + it }
+    private var builtScreen = -1
+    /** Data screens set up on the phone (Run settings → Watch data screens). */
+    private var screens: org.json.JSONArray = io.github.michealsizemore1.top25widget.RunFields.defaults()
+    private fun loadScreens() {
+        screens = try { org.json.JSONArray(prefs.getString("screens", null) ?: "") } catch (e: Exception) { null }
+            ?.takeIf { it.length() > 0 } ?: io.github.michealsizemore1.top25widget.RunFields.defaults()
+        builtScreen = -1
+    }
     private var lastRotary = 0L
     private val prefs by lazy { getSharedPreferences("run", 0) }
 
@@ -75,6 +84,7 @@ class RunActivity : Activity() {
         Run.autoPause = prefs.getBoolean("autoPause", true)
         Run.recordGpsTrack = prefs.getBoolean("track", false)
         Run.useStrap = prefs.getBoolean("useStrap", true)
+        loadScreens()
         Run.criticalPower = prefs.getInt("cp", 333)
         Run.hrMax = prefs.getFloat("hrMax", 185f).toDouble()
         Run.hrRest = prefs.getFloat("hrRest", 43.5f).toDouble()
@@ -103,6 +113,7 @@ class RunActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (wrongDevice) return
+        loadScreens()
         Run.listen(onRunChanged)
         // Coming back from History (which stopped the idle sensors): turn them on again.
         if (!RunService.running && screen != Screen.SUMMARY) RunService.start(this)
@@ -535,6 +546,13 @@ class RunActivity : Activity() {
             setPadding(w / 10, w / 9, w / 10, w / 10)
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         }
+        pageView = page
+        customBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        }
+        builtScreen = -1
         liveTitle = label("", C.ACCENT, 12f, true).apply { letterSpacing = 0.1f }
         page.addView(liveTitle)
 
@@ -569,6 +587,7 @@ class RunActivity : Activity() {
         dots = label("", C.DIM, 12f).apply { setPadding(0, dp(6), 0, 0) }
         page.addView(dots)
         root.addView(page)
+        root.addView(customBox)
 
         gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
@@ -626,6 +645,10 @@ class RunActivity : Activity() {
         val page = order[this.page]   // which screen this position shows
         fieldD.first.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
 
+        val stateNow = when (Run.state) { Run.State.PAUSED -> "PAUSED"; Run.State.AUTO_PAUSED -> "AUTO-PAUSED"; else -> null }
+        if (page >= 100) { renderScreen(page - 100, stateNow, order); return }
+        pageView.visibility = View.VISIBLE
+        customBox.visibility = View.GONE
         if (page == 0) { renderControls(paused); return }
         dataBox.visibility = View.VISIBLE
         controlsBox.visibility = View.GONE
@@ -765,6 +788,117 @@ class RunActivity : Activity() {
             io.github.michealsizemore1.top25widget.Workouts.kindName(next.optString("kind")) + " " +
             io.github.michealsizemore1.top25widget.Workouts.durText(next), "", C.MUTED)
         fieldD.first.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+    }
+
+    // ---------------------------------------------------------------- custom data screens
+
+    private lateinit var pageView: View
+    private lateinit var customBox: LinearLayout
+    private val cells = mutableListOf<Pair<String, Pair<TextView, TextView>>>()   // key → (label, value)
+    private lateinit var customState: TextView
+    private lateinit var customDots: TextView
+
+    /** Builds a screen: rows of cells, each a small label over a number that fills its space. */
+    private fun buildScreen(i: Int) {
+        builtScreen = i
+        cells.clear()
+        customBox.removeAllViews()
+        val w = resources.displayMetrics.widthPixels
+        val sc = screens.optJSONObject(i) ?: return
+        val layout = io.github.michealsizemore1.top25widget.RunFields.layout(sc.optString("layout", "6"))
+        val fields = sc.optJSONArray("fields")
+        customBox.setPadding(0, w / 16, 0, w / 22)
+        customState = label("", C.PAUSE, 10f, true)
+        customBox.addView(customState, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        var k = 0
+        layout.rows.forEachIndexed { r, count ->
+            val edge = r == 0 || r == layout.rows.size - 1
+            // Round screen: the top and bottom rows are narrower.
+            val inset = if (edge && layout.rows.size > 2) w / 6 else w / 14
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(inset, dp(1), inset, dp(1))
+            }
+            repeat(count) {
+                val key = fields?.optString(k).orEmpty().ifBlank { "time" }; k++
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    if (count > 1) { background = rounded(C.CARD, 10); setPadding(dp(2), dp(1), dp(2), dp(1)) }
+                }
+                val lab = label(io.github.michealsizemore1.top25widget.RunFields.name(key), C.MUTED, 9f)
+                val value = TextView(this).apply {
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    setTextColor(Color.WHITE)
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    setAutoSizeTextTypeUniformWithConfiguration(10, 80, 1, TypedValue.COMPLEX_UNIT_SP)
+                }
+                cell.addView(lab, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+                cell.addView(value, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+                row.addView(cell, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { if (count > 1) { marginStart = dp(2); marginEnd = dp(2) } })
+                cells += key to (lab to value)
+            }
+            customBox.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(2) })
+        }
+        customDots = label("", C.DIM, 10f)
+        customBox.addView(customDots, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    }
+
+    private fun renderScreen(i: Int, stateText: String?, order: List<Int>) {
+        pageView.visibility = View.GONE
+        customBox.visibility = View.VISIBLE
+        if (builtScreen != i) buildScreen(i)
+        customState.text = stateText ?: ""
+        customState.visibility = if (stateText == null) View.INVISIBLE else View.VISIBLE
+        customDots.text = order.indices.joinToString(" ") { if (it == this.page) "●" else "○" }
+        cells.forEach { (key, views) ->
+            val (v, color) = metric(key)
+            views.second.text = v
+            views.second.setTextColor(color)
+        }
+    }
+
+    /** Current value and color for one metric. */
+    private fun metric(key: String): Pair<String, Int> {
+        val w = Color.WHITE
+        fun n(v: Int) = if (v > 0) "$v" else "--"
+        val hz = Run.hrZoneIndex(Run.heartRate)
+        val zi = Run.zoneIndex(Run.power3s)
+        fun hrColor(bpm: Int) = Run.hrZoneIndex(bpm).let { if (it >= 0) Run.ZONE_COLORS[it] else w }
+        fun pwColor(watts: Int) = Run.zoneIndex(watts).let { if (it >= 0) Run.ZONE_COLORS[it] else w }
+        return when (key) {
+            "time" -> Run.clock(Run.movingSeconds) to w
+            "elapsed" -> Run.clock(Run.elapsedSeconds) to w
+            "clock" -> java.text.SimpleDateFormat("h:mm", java.util.Locale.getDefault()).format(java.util.Date()) to w
+            "distance" -> Run.miles(Run.distance) to w
+            "pace" -> Run.pace(Run.currentSpeed) to C.ACCENT
+            "avgPace" -> Run.pace(Run.avgSpeed) to C.ACCENT
+            "hr" -> n(Run.heartRate) to hrColor(Run.heartRate)
+            "avgHr" -> n(Run.avgHr) to hrColor(Run.avgHr)
+            "maxHr" -> n(Run.maxHr) to hrColor(Run.maxHr)
+            "hrZone" -> (if (hz >= 0) "Z${hz + 1}" else "--") to (if (hz >= 0) Run.ZONE_COLORS[hz] else w)
+            "hrr" -> (if (Run.heartRate > 0) "${Run.hrrPercent(Run.heartRate)}%" else "--") to hrColor(Run.heartRate)
+            "power" -> (if (Run.strydConnected) n(Run.power3s) else "--") to pwColor(Run.power3s)
+            "power10" -> (if (Run.strydConnected) n(Run.power10s) else "--") to pwColor(Run.power10s)
+            "avgPower" -> n(Run.avgPower) to pwColor(Run.avgPower)
+            "np" -> n(Run.normalizedPower) to pwColor(Run.normalizedPower)
+            "pctCp" -> (if (Run.power3s > 0) "${Run.power3s * 100 / Run.criticalPower.coerceAtLeast(1)}%" else "--") to pwColor(Run.power3s)
+            "powerZone" -> (if (zi >= 0) "Z${zi + 1}" else "--") to (if (zi >= 0) Run.ZONE_COLORS[zi] else w)
+            "cadence" -> n(Run.strydCadence) to w
+            "avgCadence" -> n(Run.avgCadence) to w
+            "stride" -> (if (Run.strydStride > 0.2) String.format(java.util.Locale.US, "%.2f", Run.strydStride * Run.strydCalibration) else "--") to w
+            "lapTime" -> Run.clock(Run.lapSeconds) to w
+            "lapDist" -> Run.miles(Run.lapMeters) to w
+            "lapPace" -> Run.paceFor(Run.lapSeconds, Run.lapMeters) to C.ACCENT
+            "lapHr" -> n(Run.lapHr) to hrColor(Run.lapHr)
+            "lapPower" -> n(Run.lapPower) to pwColor(Run.lapPower)
+            "lapNum" -> "${Run.lapNumber}" to w
+            "lastLap" -> (Run.laps.lastOrNull()?.let { Run.clock(it.seconds) } ?: "--") to w
+            "stress" -> "${Run.stress}" to C.ACCENT
+            "intensity" -> (if (Run.intensity > 0) String.format(java.util.Locale.US, "%.2f", Run.intensity) else "--") to w
+            else -> "--" to w
+        }
     }
 
     private fun renderControls(paused: Boolean) {

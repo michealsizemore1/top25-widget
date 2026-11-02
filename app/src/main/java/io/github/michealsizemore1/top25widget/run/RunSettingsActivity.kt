@@ -46,6 +46,11 @@ class RunSettingsActivity : Activity() {
         val dec = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         fun fmt(d: Double) = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
 
+        // ---- watch screens
+        col.addView(RunUi.button(this, "Watch data screens ›", RunUi.ACCENT) {
+            startActivity(Intent(ctx, ScreensActivity::class.java))
+        }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
+
         // ---- zones
         col.addView(RunUi.section(this, "ZONES · SENT TO YOUR WATCH"))
         val maxHr = input("Max heart rate (bpm)", fmt(RunSettings.hrMax(this)), num)

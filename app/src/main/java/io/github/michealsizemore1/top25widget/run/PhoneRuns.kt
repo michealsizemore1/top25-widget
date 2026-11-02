@@ -62,6 +62,12 @@ object RunSettings {
     fun ccUrl(ctx: Context) = p(ctx).getString("ccUrl", null)
         ?: "https://michealsizemore1.github.io/ChatGPT-The-Master-App/daily-planner.html"
 
+    /** Watch data screens (layout + metric in each spot). */
+    fun screens(ctx: Context): org.json.JSONArray = try {
+        org.json.JSONArray(p(ctx).getString("screens", null) ?: "").takeIf { it.length() > 0 }
+    } catch (e: Exception) { null } ?: io.github.michealsizemore1.top25widget.RunFields.defaults()
+    fun saveScreens(ctx: Context, a: org.json.JSONArray) { p(ctx).edit().putString("screens", a.toString()).apply(); pushToWatch(ctx) }
+
     fun save(ctx: Context, hrMax: Double, hrRest: Double, cp: Int, cal: Double, ccUrl: String) {
         p(ctx).edit().putFloat("hrMax", hrMax.toFloat()).putFloat("hrRest", hrRest.toFloat())
             .putInt("cp", cp).putFloat("cal", cal.toFloat()).putString("ccUrl", ccUrl).apply()
@@ -76,6 +82,7 @@ object RunSettings {
                 val req = PutDataMapRequest.create("/settings").apply {
                     dataMap.putDouble("hrMax", hrMax(app)); dataMap.putDouble("hrRest", hrRest(app))
                     dataMap.putInt("cp", cp(app)); dataMap.putDouble("cal", cal(app))
+                    dataMap.putString("screens", screens(app).toString())
                     dataMap.putLong("at", System.currentTimeMillis())
                 }.asPutDataRequest().setUrgent()
                 Tasks.await(Wearable.getDataClient(app).putDataItem(req))
