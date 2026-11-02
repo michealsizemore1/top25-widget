@@ -59,6 +59,9 @@ object WorkoutStore {
         savePlan(ctx, p)
     }
 
+    /** What the last import did, for the message shown afterwards. */
+    var restDays = 0; var keptEdited = 0; var pastDays = 0
+
     /**
      * Imports a written plan ({date: day's text}) from the Command Center: each day becomes a
      * workout (rest days are skipped). Days already edited on the phone are kept.
@@ -68,16 +71,17 @@ object WorkoutStore {
         val p = plan(ctx)
         val today = dayFmt.format(java.util.Date())
         var n = 0
+        restDays = 0; keptEdited = 0; pastDays = 0
         days.keys().forEach { date ->
-            if (date < today) return@forEach
+            if (date < today) { pastDays++; return@forEach }
             val text = days.optString(date)
             val existing = p.optJSONObject(date)
-            if (existing != null && existing.optBoolean("edited")) return@forEach
+            if (existing != null && existing.optBoolean("edited")) { keptEdited++; return@forEach }
             // If a day can't be understood, keep it as a simple run with the plan's text as notes.
             val w = try { Workouts.fromPlanText(text) } catch (e: Exception) {
                 Workouts.workout("Planned run", text.trim(), Workouts.step("run", "open", 0))
             }
-            if (w == null) { p.remove(date); return@forEach }
+            if (w == null) { p.remove(date); restDays++; return@forEach }
             p.put(date, w.put("id", "p$date").put("planText", text))
             n++
         }

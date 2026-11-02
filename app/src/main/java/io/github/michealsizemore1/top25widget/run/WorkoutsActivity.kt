@@ -74,7 +74,7 @@ class WorkoutsActivity : Activity() {
         val day = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
         var shown = 0
         var weekHeader = ""
-        repeat(120) {
+        repeat(250) {
             val key = WorkoutStore.dayFmt.format(cal.time)
             val w = plan.optJSONObject(key)
             if (w != null) {

@@ -51,7 +51,10 @@ class RunsActivity : Activity() {
             val msg = try {
                 val days = org.json.JSONObject(String(android.util.Base64.decode(b64, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)))
                 val n = WorkoutStore.importPlan(this, days)
-                "Imported $n planned workouts — sent to your watch"
+                "Received ${days.length()} days: $n workouts imported" +
+                    (if (WorkoutStore.restDays > 0) ", ${WorkoutStore.restDays} rest days" else "") +
+                    (if (WorkoutStore.keptEdited > 0) ", ${WorkoutStore.keptEdited} kept as you edited them" else "") +
+                    ". Sent to your watch."
             } catch (e: Exception) { "Couldn't read the plan: ${e.message}" }
             runOnUiThread {
                 Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
