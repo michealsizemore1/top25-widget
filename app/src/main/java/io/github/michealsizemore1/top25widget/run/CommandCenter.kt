@@ -96,5 +96,6 @@ object CommandCenter {
         val url = RunSettings.ccUrl(ctx).substringBefore('#') + "#watchruns=" + b64
         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         starts.forEach { PhoneRuns.setSentToCommandCenter(ctx, it) }
+        PhoneStatus.push(ctx)
     }
 }

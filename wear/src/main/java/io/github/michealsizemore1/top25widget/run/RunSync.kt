@@ -40,6 +40,19 @@ object RunSync {
         }.start()
     }
 
+    /** Asks the phone to do something (a Command Center / Strava / Stryd button on the watch). */
+    fun tellPhone(ctx: Context, path: String, done: (Boolean) -> Unit) {
+        val app = ctx.applicationContext
+        Thread {
+            val ok = try {
+                val nodes = com.google.android.gms.tasks.Tasks.await(Wearable.getNodeClient(app).connectedNodes)
+                nodes.forEach { n -> com.google.android.gms.tasks.Tasks.await(Wearable.getMessageClient(app).sendMessage(n.id, path, ByteArray(0))) }
+                nodes.isNotEmpty()
+            } catch (e: Exception) { false }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { done(ok) }
+        }.start()
+    }
+
     fun pushAll(ctx: Context) {
         val app = ctx.applicationContext
         val sent = app.getSharedPreferences(PREFS, 0)
@@ -95,6 +108,13 @@ object WatchWorkouts {
 class RunSettingsListener : WearableListenerService() {
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
+            if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == "/phonestatus") {
+                val m = DataMapItem.fromDataItem(e.dataItem).dataMap
+                getSharedPreferences("phonestatus", 0).edit()
+                    .putInt("ccUnsent", m.getInt("ccUnsent")).putBoolean("strava", m.getBoolean("strava"))
+                    .putBoolean("stryd", m.getBoolean("stryd")).putLong("at", System.currentTimeMillis()).apply()
+                return@forEach
+            }
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == "/workouts") {
                 try {
                     val asset = DataMapItem.fromDataItem(e.dataItem).dataMap.getAsset("data") ?: return@forEach

@@ -244,6 +244,33 @@ class RunActivity : Activity() {
             })
         })
 
+        // Same three buttons as the phone. They run on the phone (its browser, internet, and logins).
+        val ps = getSharedPreferences("phonestatus", 0)
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+            fun pill(title: String, status: String, color: Int, path: String, okMsg: String) = column().apply {
+                gravity = Gravity.CENTER
+                background = rounded(color, 14)
+                setPadding(dp(2), dp(6), dp(2), dp(6))
+                addView(label(title, Color.WHITE, 11f, true))
+                addView(label(status, 0xDDFFFFFF.toInt(), 9f))
+                setOnClickListener {
+                    RunSync.tellPhone(this@RunActivity, path) { ok ->
+                        android.widget.Toast.makeText(this@RunActivity, if (ok) okMsg else "Phone not connected", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            val cc = ps.getInt("ccUnsent", 0)
+            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { if (!last) marginEnd = dp(4) } }
+            addView(pill("CC", if (ps.contains("at")) (if (cc == 0) "✓ sent" else "Send $cc") else "—", 0xFF7B61FF.toInt(), "/cmd/cc",
+                "Tap the notification on your phone"), lp(false))
+            addView(pill("Strava", if (ps.getBoolean("strava", false)) "✓" else "Connect", 0xFFFC4C02.toInt(), "/cmd/strava",
+                "Phone is uploading to Strava"), lp(false))
+            addView(pill("Stryd", if (ps.getBoolean("stryd", false)) "✓" else "Connect", 0xFF50555E.toInt(), "/cmd/stryd",
+                "Phone is checking Stryd"), lp(true))
+        })
+
         // Today's workout (tap to change).
         col.addView(card().apply {
             addView(label("TODAY", C.MUTED, 10f, true))

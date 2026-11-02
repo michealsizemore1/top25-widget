@@ -73,6 +73,12 @@ class RunsActivity : Activity() {
     }
 
     private fun render() {
+        PhoneStatus.push(this)
+        // Opened from the watch's Command Center button notification.
+        if (intent?.getBooleanExtra("sendCc", false) == true) {
+            intent.removeExtra("sendCc")
+            PhoneStatus.unsentCc(this).takeIf { it.isNotEmpty() }?.let { CommandCenter.send(this, it) }
+        }
         val ctx = this
         val dp = { v: Int -> RunUi.dp(ctx, v) }
         val col = LinearLayout(this).apply {

@@ -67,6 +67,7 @@
                 <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
                 <data android:scheme="wear" android:host="*" android:path="/settings" />
                 <data android:scheme="wear" android:host="*" android:path="/workouts" />
+                <data android:scheme="wear" android:host="*" android:path="/phonestatus" />
             </intent-filter>
         </service>
 

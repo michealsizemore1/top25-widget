@@ -88,6 +88,11 @@ object RunSettings {
 
 /** Receives finished runs from the watch. */
 class RunReceiverService : WearableListenerService() {
+    /** Buttons tapped on the watch (Command Center, Strava, Stryd). */
+    override fun onMessageReceived(event: com.google.android.gms.wearable.MessageEvent) {
+        if (event.path.startsWith("/cmd/")) PhoneStatus.command(this, event.path)
+    }
+
     override fun onDataChanged(events: DataEventBuffer) {
         val items = events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path?.startsWith("/run/") == true }
             .map { it.dataItem.freeze() }
@@ -101,6 +106,7 @@ class RunReceiverService : WearableListenerService() {
                 val isNew = !PhoneRuns.file(this, json.optLong("start")).exists()
                 PhoneRuns.save(this, json)
                 Tasks.await(Wearable.getDataClient(this).deleteDataItems(item.uri))
+                PhoneStatus.push(this)
                 if (isNew) {
                     notifyRun(json)
                     // Stryd first (its metrics go in the Strava description), then Strava.
