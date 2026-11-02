@@ -89,6 +89,13 @@ class RunActivity : Activity() {
         }
         RunSync.pushAll(this)   // send any runs the phone doesn't have yet
         RunSync.reportVersion(this)
+        // Catch up on anything the phone sent while this app wasn't listening, then redraw the home screen.
+        RunSync.pullLatest(this) {
+            if (!wrongDevice && screen == Screen.START && !overlayOpen && editorRotary == null) {
+                if (!Run.isActive && Run.workout == null) WatchWorkouts.today(this)?.let { Run.chooseWorkout(it) }
+                startBuilt = false; render()
+            }
+        }
         screen = if (Run.isActive) Screen.LIVE else Screen.START
         requestNeeded()
     }

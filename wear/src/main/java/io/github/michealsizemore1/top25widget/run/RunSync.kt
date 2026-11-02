@@ -54,6 +54,39 @@ object RunSync {
         }.start()
     }
 
+    /**
+     * Reads the phone's latest workouts and status straight from the data layer. Covers updates
+     * sent while the watch app wasn't listening (e.g. right after it was reinstalled).
+     */
+    fun pullLatest(ctx: Context, done: () -> Unit) {
+        val app = ctx.applicationContext
+        Thread {
+            try {
+                val dc = Wearable.getDataClient(app)
+                val items = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*/workouts")))
+                // Newest copy wins.
+                val best = items.map { DataMapItem.fromDataItem(it).dataMap }.maxByOrNull { it.getLong("at") }
+                items.release()
+                if (best != null && best.getLong("at") > app.getSharedPreferences(PREFS, 0).getLong("workoutsAt", 0)) {
+                    best.getAsset("data")?.let { asset ->
+                        val input = com.google.android.gms.tasks.Tasks.await(dc.getFdForAsset(asset)).inputStream
+                        WatchWorkouts.save(app, java.util.zip.GZIPInputStream(input).use { it.readBytes().toString(Charsets.UTF_8) })
+                        app.getSharedPreferences(PREFS, 0).edit().putLong("workoutsAt", best.getLong("at")).apply()
+                    }
+                }
+                val st = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*/phonestatus")))
+                st.map { DataMapItem.fromDataItem(it).dataMap }.firstOrNull()?.let { m ->
+                    app.getSharedPreferences("phonestatus", 0).edit()
+                        .putInt("ccUnsent", m.getInt("ccUnsent")).putBoolean("stryd", m.getBoolean("stryd"))
+                        .putLong("at", System.currentTimeMillis()).apply()
+                }
+                st.release()
+                reportVersion(app)
+            } catch (e: Exception) { }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { done() }
+        }.start()
+    }
+
     fun pushAll(ctx: Context) {
         val app = ctx.applicationContext
         val sent = app.getSharedPreferences(PREFS, 0)
@@ -122,6 +155,7 @@ class RunSettingsListener : WearableListenerService() {
                     val asset = DataMapItem.fromDataItem(e.dataItem).dataMap.getAsset("data") ?: return@forEach
                     val input = com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(this).getFdForAsset(asset)).inputStream
                     WatchWorkouts.save(this, java.util.zip.GZIPInputStream(input).use { it.readBytes().toString(Charsets.UTF_8) })
+                    getSharedPreferences("runsync", 0).edit().putLong("workoutsAt", DataMapItem.fromDataItem(e.dataItem).dataMap.getLong("at")).apply()
                     RunSync.reportVersion(this)   // tell the phone it arrived
                 } catch (ex: Exception) { }
                 return@forEach
