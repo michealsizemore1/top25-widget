@@ -634,23 +634,120 @@ class RunActivity : Activity() {
     @Deprecated("Deprecated in Java")
     /** Back gesture (swipe): navigation only — never starts or ends a run, never leaves mid-run. */
     override fun onBackPressed() {
-        if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording; reopen to return
+        if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.SUMMARY) { finish(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
+    // ---------------------------------------------------------------- live pages
+
+    private var liveBuilt = false
+    private lateinit var liveTitle: TextView
+    private lateinit var fieldA: Pair<TextView, TextView>
+    private lateinit var fieldB: Pair<TextView, TextView>
+    private lateinit var fieldC: Pair<TextView, TextView>
+    private lateinit var fieldD: Pair<TextView, TextView>
+    private lateinit var dataBox: LinearLayout
+    private lateinit var zoneBar: LinearLayout
+    private lateinit var controlsBox: LinearLayout
+    private lateinit var dots: TextView
+    private lateinit var gestures: GestureDetector
+
+    private fun field(valueSize: Float): Pair<LinearLayout, Pair<TextView, TextView>> {
+        val v = label("--", Color.WHITE, valueSize, true)
+        val l = label("", C.MUTED, 11f)
+        val box = column().apply { addView(v); addView(l) }
+        return box to (v to l)
+    }
+
+    private fun buildLive() {
+        liveBuilt = true
+        startBuilt = false
+        val w = resources.displayMetrics.widthPixels
+        root.removeAllViews()
+
+        val page = column().apply {
+            gravity = Gravity.CENTER
+            setPadding(w / 10, w / 9, w / 10, w / 10)
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        }
+        pageView = page
+        customBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        }
+        builtScreen = -1
+        liveTitle = label("", C.ACCENT, 12f, true).apply { letterSpacing = 0.1f }
+        page.addView(liveTitle)
+
+        dataBox = column()
+        val (a, fa) = field(40f); fieldA = fa
+        val (b, fb) = field(26f); fieldB = fb
+        val (c, fc) = field(26f); fieldC = fc
+        val (d, fd) = field(24f); fieldD = fd
+        dataBox.addView(a)
+        dataBox.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(b, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(c, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) }
+        })
+        dataBox.addView(d.apply { setPadding(0, dp(4), 0, 0) })
+        zoneBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+            Run.ZONE_COLORS.forEach { color ->
+                addView(View(context).apply { background = rounded(color, 3) },
+                    LinearLayout.LayoutParams(0, dp(6), 1f).apply { marginStart = dp(2); marginEnd = dp(2) })
+            }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+        }
+        dataBox.addView(zoneBar)
+        page.addView(dataBox)
+
+        controlsBox = column().apply { visibility = View.GONE }
+        page.addView(controlsBox)
+
+        dots = label("", C.DIM, 12f).apply { setPadding(0, dp(6), 0, 0) }
+        page.addView(dots)
+        root.addView(page)
+        root.addView(customBox)
+
+        gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                if (abs(vx) > abs(vy) && abs(vx) > 400) { turnPage(if (vx < 0) 1 else -1); return true }
+                return false
+            }
+            // Anywhere on a data screen: double-tap = lap, press and hold = finish.
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (!onDataScreen() || !prefs.getBoolean("gestures", true)) return false
+                lapNow(); return true
+            }
+            override fun onLongPress(e: MotionEvent) {
+                if (!onDataScreen() || !prefs.getBoolean("gestures", true)) return
+                openFinish()
+            }
+        })
+        root.isFocusable = true
+        root.isFocusableInTouchMode = true
+        root.requestFocus()
+    }
+
+    // ---------------------------------------------------------------- watch buttons
+
     /** On a run data screen (not Controls or the Finish screen). */
     private fun onDataScreen(): Boolean {
         if (screen != Screen.LIVE || confirmingFinish) return false
-        val order = pageOrder()
-        return order.getOrNull(page) != 0
+        return pageOrder().getOrNull(page) != 0
     }
 
     /** Lap now (next step in a workout), with a buzz and a short note on screen. */
     private fun lapNow() {
         if (!Run.isActive) return
+        pulse(longArrayOf(0, 150))
         if (Run.hasWorkout && !Run.workoutDone) { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
         else { Run.lap(); flash("LAP ${Run.laps.size}") }
     }
