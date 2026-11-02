@@ -65,6 +65,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
     private val ticker = object : Runnable {
         override fun run() {
             Run.tick()
+            Speaker.onTick()
             updateGps()
             if (Run.isActive && ++saveCounter % 30 == 0) {
                 try { RunStore.saveCurrent(this@RunService, Run.toJson()) } catch (e: Exception) { }
@@ -99,7 +100,8 @@ class RunService : Service(), SensorEventListener, LocationListener {
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Scores:run").apply { acquire(4 * 60 * 60 * 1000L) }
 
-        Run.onEvent = { e -> buzz(e) }
+        Speaker.init(this)
+        Run.onEvent = { e -> buzz(e); Speaker.onEvent(e) }
         updateGps()
         handler.post(ticker)
     }

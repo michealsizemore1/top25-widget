@@ -248,16 +248,17 @@ object Run {
         workoutDone = false
         if (hasWorkout) beginStep(0)
         state = State.RUNNING
+        onEvent?.invoke("start")
         changed()
     }
 
-    fun pause() { if (state == State.RUNNING || state == State.AUTO_PAUSED) { state = State.PAUSED; changed() } }
+    fun pause() { if (state == State.RUNNING || state == State.AUTO_PAUSED) { state = State.PAUSED; onEvent?.invoke("pause"); changed() } }
 
     fun resume() {
         if (state == State.PAUSED || state == State.AUTO_PAUSED) {
             lastStrydTotal = strydTotalDistance   // don't count distance covered while paused
             slowSeconds = 0
-            state = State.RUNNING; changed()
+            state = State.RUNNING; onEvent?.invoke("resume"); changed()
         }
     }
 

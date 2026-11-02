@@ -80,6 +80,7 @@ class RunActivity : Activity() {
         if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) { wrongDevice = true; return }
         root = FrameLayout(this).apply { setBackgroundColor(C.BG) }
         setContentView(root)
+        Speaker.init(this)
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
                 logKey("bottom button (back) · screen=$screen")
@@ -207,6 +208,7 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
+        set("voiceRow", (if (prefs.getBoolean("voice", true)) "On" else "Off") + " ▸", C.ACCENT)
         set("quickBtn", if (prefs.getBoolean("gestures", true)) "On" else "Off")
         set("bottomBtn", if (prefs.getBoolean("bottomBtn", true)) "On" else "Off")
         set("keepOn", if (prefs.getBoolean("keepOn", true)) "On" else "Off")
@@ -396,10 +398,11 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
+        col.addView(row("voiceRow", "Audio prompts") { showVoiceSettings() })
         col.addView(row("bottomBtn", "Bottom button: start · lap · double-press finish") {
             prefs.edit().putBoolean("bottomBtn", !prefs.getBoolean("bottomBtn", true)).apply()
         }.apply { addView(label("", C.DIM, 9f).also { startValues["keyLog"] = it }) })
-        col.addView(row("keepOn", "Keep screen on in Running (needed for the button)") {
+        col.addView(row("keepOn", "Keep screen on in Running") {
             val on = !prefs.getBoolean("keepOn", true)
             prefs.edit().putBoolean("keepOn", on).apply()
             if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -518,6 +521,31 @@ class RunActivity : Activity() {
         root.removeAllViews()
         root.addView(col)
         root.isFocusable = true; root.isFocusableInTouchMode = true; root.requestFocus()
+    }
+
+    // ---------------------------------------------------------------- audio prompts settings
+
+    private fun showVoiceSettings(): Unit = overlay { col ->
+        col.addView(label("Audio prompts", Color.WHITE, 18f, true))
+        col.addView(label("Voice: " + Speaker.status + ". Plays through Bluetooth headphones when connected, " +
+            "otherwise the watch speaker. Volume = watch media volume.", C.MUTED, 10f))
+        fun toggle(key: String, title: String, def: Boolean = true) =
+            card(title, if (prefs.getBoolean(key, def)) "On" else "Off", if (prefs.getBoolean(key, def)) C.ACCENT else Color.WHITE) {
+                prefs.edit().putBoolean(key, !prefs.getBoolean(key, def)).apply(); showVoiceSettings()
+            }
+        col.addView(toggle("voice", "Audio prompts"))
+        col.addView(toggle("voiceLaps", "Each lap / mile: time, pace, HR, power"))
+        val every = prefs.getInt("voiceEvery", 0)
+        col.addView(card("Time update every", if (every == 0) "Off" else "$every minutes", C.ACCENT) {
+            val next = listOf(0, 5, 10, 15, 20, 30).let { it[(it.indexOf(every) + 1) % it.size] }
+            prefs.edit().putInt("voiceEvery", next).apply(); showVoiceSettings()
+        })
+        col.addView(toggle("voiceSteps", "Workout steps (what's next)"))
+        col.addView(toggle("voiceAlerts", "Target alerts (speed up / ease off)"))
+        col.addView(card("Test the voice", "", C.ACCENT) {
+            Speaker.say("Lap 1. 8 minutes 32 seconds. Pace 8 32. Heart rate 142", force = true)
+        })
+        col.addView(card("Done", "", C.ACCENT) { overlayOpen = false; startBuilt = false; renderStart() })
     }
 
     // ---------------------------------------------------------------- data screens editor (watch)
@@ -1189,6 +1217,7 @@ class RunActivity : Activity() {
 
     private fun finishRun() {
         val json = Run.finish(this)
+        Speaker.finished(json)
         RunSync.pushAll(this)
         RunService.stop(this)
         summary = json
