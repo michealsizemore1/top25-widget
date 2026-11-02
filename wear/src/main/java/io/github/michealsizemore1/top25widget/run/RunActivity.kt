@@ -86,6 +86,9 @@ class RunActivity : Activity() {
         Run.recordGpsTrack = prefs.getBoolean("track", false)
         Run.useStrap = prefs.getBoolean("useStrap", true)
         loadScreens()
+        // Keep the screen awake so the app keeps focus — otherwise, once the watch dims, the bottom
+        // button goes to the system instead of the app (and closes it).
+        if (prefs.getBoolean("keepOn", true)) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         Run.criticalPower = prefs.getInt("cp", 333)
         Run.hrMax = prefs.getFloat("hrMax", 185f).toDouble()
         Run.hrRest = prefs.getFloat("hrRest", 43.5f).toDouble()
@@ -199,6 +202,9 @@ class RunActivity : Activity() {
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
         set("quickBtn", if (prefs.getBoolean("gestures", true)) "On" else "Off")
+        set("bottomBtn", if (prefs.getBoolean("bottomBtn", true)) "On" else "Off")
+        set("keepOn", if (prefs.getBoolean("keepOn", true)) "On" else "Off")
+        set("keyLog", "Button log:\n" + (prefs.getString("buttonLog", null)?.lines()?.take(3)?.joinToString("\n") ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
@@ -384,6 +390,15 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
+        col.addView(row("bottomBtn", "Bottom button: start · lap · double-press finish") {
+            prefs.edit().putBoolean("bottomBtn", !prefs.getBoolean("bottomBtn", true)).apply()
+        }.apply { addView(label("", C.DIM, 9f).also { startValues["keyLog"] = it }) })
+        col.addView(row("keepOn", "Keep screen on in Running (needed for the button)") {
+            val on = !prefs.getBoolean("keepOn", true)
+            prefs.edit().putBoolean("keepOn", on).apply()
+            if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        })
         col.addView(row("quickBtn", "Run gestures: double-tap = lap · hold = finish") {
             prefs.edit().putBoolean("gestures", !prefs.getBoolean("gestures", true)).apply()
         }.apply {
@@ -639,6 +654,49 @@ class RunActivity : Activity() {
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.SUMMARY) { finish(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
+    // ---------------------------------------------------------------- bottom button
+
+    /** Last few button events, shown in Settings. */
+    private fun logKey(line: String) {
+        val t = java.text.SimpleDateFormat("h:mm:ss", java.util.Locale.US).format(java.util.Date())
+        val old = prefs.getString("buttonLog", "").orEmpty().lines().filter { it.isNotBlank() }.take(4)
+        prefs.edit().putString("buttonLog", (listOf("$t $line") + old).joinToString("\n")).apply()
+    }
+
+    /**
+     * Bottom button: on the Running home screen, start; during a run, one press = lap (next step in a
+     * workout), a quick double press = finish and save. Elsewhere (settings, lists) it's a normal back.
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (wrongDevice) return super.dispatchKeyEvent(event)
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
+            logKey("${android.view.KeyEvent.keyCodeToString(event.keyCode)} · focus=${hasWindowFocus()} · screen=$screen")
+        if (event.keyCode != android.view.KeyEvent.KEYCODE_BACK || !prefs.getBoolean("bottomBtn", true)) return super.dispatchKeyEvent(event)
+        val home = screen == Screen.START && !Run.isActive && !showSettings && !overlayOpen && editorRotary == null
+        if (screen != Screen.LIVE && !home) return super.dispatchKeyEvent(event)
+        if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) {
+            if (home) { pulse(longArrayOf(0, 400)); startRun() } else bottomInRun()
+        }
+        return true   // consume down and up so the system doesn't also go back
+    }
+
+    private var pendingLap: Runnable? = null
+
+    private fun bottomInRun() {
+        val waiting = pendingLap
+        if (waiting != null) {   // second press within the window: finish
+            handler.removeCallbacks(waiting); pendingLap = null
+            if (Run.state != Run.State.RUNNING) Run.resume()
+            pulse(longArrayOf(0, 200, 100, 200, 100, 700))
+            finishRun()
+            return
+        }
+        if (confirmingFinish) { pulse(longArrayOf(0, 200, 100, 200, 100, 700)); finishRun(); return }
+        val lap = Runnable { pendingLap = null; lapNow() }
+        pendingLap = lap
+        handler.postDelayed(lap, 450)
     }
 
     // ---------------------------------------------------------------- live pages
