@@ -127,6 +127,13 @@ class RunActivity : Activity() {
         if (!wrongDevice) Run.unlisten(onRunChanged)
     }
 
+    /** Last few button events, shown in Settings to diagnose the orange button. */
+    private fun logButton(line: String) {
+        val t = java.text.SimpleDateFormat("h:mm:ss", java.util.Locale.US).format(java.util.Date())
+        val old = prefs.getString("buttonLog", "").orEmpty().lines().filter { it.isNotBlank() }.take(4)
+        prefs.edit().putString("buttonLog", (listOf("$t $line") + old).joinToString("\n")).apply()
+    }
+    private var stoppedAt = 0L
     /** When the Running screen was last on the display, for telling a button press from opening the app. */
     private var lastShownAt = 0L
     private var isOnScreen = false
@@ -140,6 +147,7 @@ class RunActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        stoppedAt = System.currentTimeMillis()
         wasVisible = false
         handler.removeCallbacksAndMessages(null)
         if (wrongDevice) return
@@ -191,7 +199,7 @@ class RunActivity : Activity() {
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
         set("quickBtn", if (prefs.getBoolean("orangeButton", true)) "On" else "Off")
-        set("lastKey", "Last button the app saw: " + (prefs.getString("lastKey", null) ?: "none yet"), C.DIM)
+        set("lastKey", "Button log:\n" + (prefs.getString("buttonLog", null) ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
@@ -657,11 +665,21 @@ class RunActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (wrongDevice || intent.action != Intent.ACTION_MAIN || !prefs.getBoolean("orangeButton", true)) return
-        prefs.edit().putString("lastKey", "Orange button (Running opened)").apply()
         // "Showing" = on screen now or within the last few seconds (Samsung briefly hides the app while
         // it handles the button press, so the app is never "on screen" at the exact moment it arrives).
         val now = System.currentTimeMillis()
-        orangeButton(visible = isOnScreen || now - lastShownAt < 3000)
+        val ago = listOf(now - lastShownAt, if (stoppedAt > 0) now - stoppedAt else 0L).minOrNull() ?: 0L
+        val visible = isOnScreen || ago < 5000
+        val decision = when {
+            screen == Screen.START && Run.isActive -> "run already going"
+            screen == Screen.START && !visible -> "just opened Running (not showing ${ago / 1000}s)"
+            screen == Screen.START -> "START"
+            screen == Screen.LIVE -> "lap / finish"
+            else -> "close summary"
+        }
+        logButton("orange · focus=$isOnScreen · shown ${ago}ms ago · screen=$screen → $decision")
+        prefs.edit().putString("lastKey", "Orange button (Running opened)").apply()
+        try { orangeButton(visible) } catch (e: Exception) { logButton("ERROR: ${e.javaClass.simpleName}: ${e.message}") }
     }
 
     /** Press = start (on the Running screen) or lap during a run; double press = finish and save. */
