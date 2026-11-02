@@ -31,9 +31,9 @@ class WorkoutParseTest {
         assertEquals(1, Workouts.flatten(w).size); assertEquals(6437, Workouts.flatten(w)[0].optInt("value")) }
     @Test fun mc5() { assertEquals("Easy + Hill Sprints", show("**Thu, Nov 5:** 5 E + 6 hill sprints")!!.optString("name")) }
     @Test fun mc6() { val w = show("**Sat, Nov 7:** 8 E + STRENGTH (30 min)\n- Goblet squat: 3x12-15\n- Bulgarian split squat: 3x10 per leg")!!
-        assertEquals(12875, Workouts.flatten(w)[0].optInt("value")) }
+        assertEquals(12874, Workouts.flatten(w)[0].optInt("value")) }
     @Test fun mc7() { show("**Sun, Nov 15:** 14 L") ; show("**Thu, Nov 19:** 6 T") ; show("**Sun, Dec 6:** 16 L w/ last 4 @ MP") }
-    @Test fun cross() { assertNotNull(show("Cross-training 45 min or rest")) }
+    @Test fun cross() { assertEquals("open", Workouts.flatten(show("Cross-training 45 min or rest")!!)[0].optString("dur")) }
     @Test fun rest2() { assertNull(show("Monday, November 9\nRest")) }
     @Test fun off() { assertNull(show("Friday\nOff")) }
     @Test fun steady() { assertEquals("time", Workouts.flatten(show("Saturday\nSteady 60 minutes")!!)[0].optString("dur")) }

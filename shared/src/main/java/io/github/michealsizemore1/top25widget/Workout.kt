@@ -144,8 +144,9 @@ object Workouts {
         if (isRest || t.isBlank()) return null
 
         val notes = text.trim()
-        // Anything else that isn't recognizable as a run still comes over, as an open workout with the plan's words.
-        if (!hasRun) {
+        // Anything else that isn't a run (cross-training, strength…) still comes over, as an open workout with the plan's words.
+        val notRun = Regex("""^(cross|strength|bike|cycl|swim|yoga|hike|walk|core|mobility|elliptical|row)""").containsMatchIn(t)
+        if (!hasRun || notRun) {
             val name = t.lines().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
                 .replaceFirstChar { it.uppercase() }.take(28).ifBlank { "Planned workout" }
             return workout(name, notes, step("run", "open", 0))
