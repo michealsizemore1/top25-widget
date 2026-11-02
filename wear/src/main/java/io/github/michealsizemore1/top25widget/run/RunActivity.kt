@@ -80,6 +80,12 @@ class RunActivity : Activity() {
         if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = true)) { wrongDevice = true; return }
         root = FrameLayout(this).apply { setBackgroundColor(C.BG) }
         setContentView(root)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+                logKey("bottom button (back) · screen=$screen")
+                handleBack()
+            }
+        }
 
         Run.source = if (prefs.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
         Run.autoPause = prefs.getBoolean("autoPause", true)
@@ -647,6 +653,22 @@ class RunActivity : Activity() {
     }
 
     @Deprecated("Deprecated in Java")
+    /**
+     * The bottom (back) button. With swipe-to-close turned off for Running, this is only ever the button:
+     * home screen = start, during a run = lap / double-press finish, elsewhere = go back.
+     */
+    private fun handleBack() {
+        if (wrongDevice) { finish(); return }
+        when {
+            screen == Screen.LIVE -> if (prefs.getBoolean("bottomBtn", true)) bottomInRun()
+            editorRotary != null || overlayOpen -> { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart() }
+            screen == Screen.START && showSettings -> { showSettings = false; startBuilt = false; renderStart() }
+            screen == Screen.SUMMARY -> finish()
+            screen == Screen.START && !Run.isActive && prefs.getBoolean("bottomBtn", true) -> { pulse(longArrayOf(0, 400)); startRun() }
+            else -> finish()
+        }
+    }
+
     /** Back gesture (swipe): navigation only — never starts or ends a run, never leaves mid-run. */
     override fun onBackPressed() {
         if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording
@@ -859,6 +881,7 @@ class RunActivity : Activity() {
     }
 
     private fun renderLive() {
+        if (screen != Screen.LIVE) return   // e.g. right after SAVE: the summary is showing
         if (!liveBuilt) buildLive()
         val paused = Run.state == Run.State.PAUSED || Run.state == Run.State.AUTO_PAUSED
         root.setBackgroundColor(if (paused) 0xFF2A1F05.toInt() else Color.BLACK)
