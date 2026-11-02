@@ -23,6 +23,16 @@ class WorkoutParseTest {
     @Test fun progression() { assertNotNull(show("Progression run 8 miles: last 3 faster")) }
     @Test fun miles() { assertEquals(9656, Workouts.flatten(show("Tuesday, November 10\n6 miles easy + 6 x 20 sec strides")!!)[0].optInt("value")) }
     @Test fun range() { show("Friday, November 13\nEasy 5-6 miles") }
+    // The McMillan plan's own format.
+    @Test fun mc1() { val w = show("**Sun, Nov 1:** 4 E")!!; assertEquals(6437, Workouts.flatten(w)[0].optInt("value")) }
+    @Test fun mc2() { assertNull(show("**Mon, Nov 2:** Rest")) }
+    @Test fun mc3() { assertEquals(13, Workouts.flatten(show("**Tue, Nov 3:** 5 E + strides")!!).size) }
+    @Test fun mc4() { val w = show("**Wed, Nov 4:** 4 E + STRENGTH (30 min)\n- Goblet squat: 3x12-15\n- Dumbbell Romanian deadlift: 3x10-12\n- Plank with shoulder taps: 3x30-45 sec")!!
+        assertEquals(1, Workouts.flatten(w).size); assertEquals(6437, Workouts.flatten(w)[0].optInt("value")) }
+    @Test fun mc5() { assertEquals("Easy + Hill Sprints", show("**Thu, Nov 5:** 5 E + 6 hill sprints")!!.optString("name")) }
+    @Test fun mc6() { val w = show("**Sat, Nov 7:** 8 E + STRENGTH (30 min)\n- Goblet squat: 3x12-15\n- Bulgarian split squat: 3x10 per leg")!!
+        assertEquals(12875, Workouts.flatten(w)[0].optInt("value")) }
+    @Test fun mc7() { show("**Sun, Nov 15:** 14 L") ; show("**Thu, Nov 19:** 6 T") ; show("**Sun, Dec 6:** 16 L w/ last 4 @ MP") }
     @Test fun cross() { assertNotNull(show("Cross-training 45 min or rest")) }
     @Test fun rest2() { assertNull(show("Monday, November 9\nRest")) }
     @Test fun off() { assertNull(show("Friday\nOff")) }

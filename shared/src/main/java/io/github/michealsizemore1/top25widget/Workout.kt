@@ -123,13 +123,21 @@ object Workouts {
      * Returns null for rest days. The day's text is kept as the notes.
      */
     fun fromPlanText(text: String): JSONObject? {
-        // Skip a date heading line ("Tuesday, November 10") so its numbers aren't read as distances.
-        val lines = text.trim().lines()
-        val header = Regex("""^\W*(mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|day\s+\d|\d{4}-\d{2}-\d{2})""", RegexOption.IGNORE_CASE)
-        val t = (if (lines.size > 1 && header.containsMatchIn(lines[0]) && !Regex("""\b(mi|miles?)\b""", RegexOption.IGNORE_CASE).containsMatchIn(lines[0]))
-            lines.drop(1).joinToString("\n") else text).lowercase(Locale.US)
-        val body = text.lines().drop(1).joinToString(" ").ifBlank { text }
-        val hasRun = Regex("""\b(run|runs|running|race|intervals?|repeats?|tempo|threshold|recovery|progression|easy|long|strides|fartlek|steady|aerobic|jog|hills?|lr|mp|workout|\d+(\.\d+)?\s*(mi|miles?|km|k)|\d+\s*min(utes)?)\b""").containsMatchIn(t)
+        // 1. Take off the date at the start ("**Sun, Nov 1:** 4 E", "Tuesday, November 10") — its numbers aren't distances.
+        val datePrefix = Regex("""^[\s*#_>-]*(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s*)?(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{2,4})?)?\s*[:*_\s-]*""", RegexOption.IGNORE_CASE)
+        val rawLines = text.trim().lines().map { it.trim() }
+        val first = rawLines.firstOrNull().orEmpty()
+        val firstRest = first.replaceFirst(datePrefix, "").trim()
+        // 2. The run is on the first line; bulleted lines below (strength exercises, notes) aren't part of it.
+        val bullet = Regex("""^\s*([-•*]|\d+[.)])\s""")
+        val runLine = (if (firstRest.isNotEmpty()) firstRest else rawLines.drop(1).firstOrNull { it.isNotEmpty() && !bullet.containsMatchIn(it) }.orEmpty())
+        // 3. Drop any strength / core / mobility add-on: "8 E + STRENGTH (30 min)" → "8 E".
+        val extra = Regex("""\s*(\+|&|and|plus|then|,)\s*(strength|core|mobility|yoga|stretch\w*|cross[- ]?train\w*|drills).*$""", RegexOption.IGNORE_CASE)
+        val runOnly = runLine.replace(extra, "").replace("*", "").trim()
+        val t = runOnly.lowercase(Locale.US)
+        // McMillan-style shorthand: "4 E" easy, "6 R" recovery, "14 L"/"14 LR" long, "5 T" tempo, "10 MP" marathon pace.
+        val code = Regex("""^(\d+(?:\.\d+)?)\s*(e|ez|easy|r|rec|l|lr|long|t|tempo|mp|m|hm|s|p)\b""").find(t)
+        val hasRun = code != null || Regex("""\b(run|runs|running|race|intervals?|repeats?|tempo|threshold|recovery|progression|easy|long|strides|fartlek|steady|aerobic|jog|hills?|lr|mp|workout|\d+(\.\d+)?\s*(mi|miles?|km|k)|\d+\s*min(utes)?)\b""").containsMatchIn(t)
         // Only a day that is clearly a rest day (and has no distance or time in it) is skipped.
         val isRest = Regex("""\brest\b|\bday\s*off\b|\boff\s*day\b|^\W*off\W*$|\bno\s+run""", RegexOption.MULTILINE).containsMatchIn(t) &&
             !Regex("""\d+(\.\d+)?\s*(mi\b|miles?|km|min)""").containsMatchIn(t)
@@ -143,7 +151,7 @@ object Workouts {
             return workout(name, notes, step("run", "open", 0))
         }
         fun miles(s: String) = Regex("""(\d+(?:\.\d+)?)(?:\s*(?:-|to|–)\s*\d+(?:\.\d+)?)?\s*(?:mi\b|miles?\b)""").find(s)?.groupValues?.get(1)?.toDoubleOrNull()
-        val total = miles(t)
+        val total = miles(t) ?: code?.groupValues?.get(1)?.toDoubleOrNull()
         val explicitZone = Regex("""\b(?:z|zone\s*)([1-5])\b""").find(t)?.groupValues?.get(1)?.toIntOrNull()
         val pace = Regex("""(\d{1,2}:\d{2})\s*(?:-|–|to)\s*(\d{1,2}:\d{2})""").find(t)?.let {
             secs(it.groupValues[1]) to secs(it.groupValues[2])
@@ -151,8 +159,13 @@ object Workouts {
               ?: Regex("""(\d{1,2}:\d{2})\s*(?:/\s*mi|/\s*mile|min/mi|min per mile|per mile|pace)""").find(t))
               ?.let { secs(it.groupValues[1]).let { p -> (p - 10) to (p + 10) } }
 
+        val shortLabel = when (code?.groupValues?.get(2)) {
+            "r", "rec" -> "Recovery Run"; "l", "lr", "long" -> "Long Run"; "t", "tempo" -> "Tempo Run"
+            "mp", "m" -> "Marathon Pace Run"; "hm" -> "Half Marathon Pace Run"; else -> null
+        }
         val label = when {
             Regex("""\brace\b""").containsMatchIn(t) -> "Race"
+            shortLabel != null && !Regex("""\d+\s*[x×]""").containsMatchIn(t) -> shortLabel
             Regex("""\b(intervals?|repeats?|speed\s*work|\d+\s*[x×]\s*\d)""").containsMatchIn(t) -> "Intervals"
             Regex("""\btempo|threshold""").containsMatchIn(t) -> "Tempo Run"
             Regex("""\blong\s+run|\blr\b""").containsMatchIn(t) -> "Long Run"
@@ -164,12 +177,15 @@ object Workouts {
         fun distOrOpen(m: Double?) = if (m != null && m > 0) "dist" to mi(Math.round(m * 4) / 4.0) else "open" to 0
         fun easyStep(kind: String, m: Double?, zone: Int = 2) = distOrOpen(m).let { (d, v) -> step(kind, d, v, "hr", zone) }
 
-        // Easy run with strides: "6 miles easy + 6 x 20 sec strides"
-        if (Regex("""\bstrides?\b""").containsMatchIn(t)) {
-            val n = Regex("""(\d+)\s*[x×]""").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 6
-            val sec = Regex("""(\d+)\s*(?:sec|s\b|seconds?)""").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 20
-            return workout("Easy + Strides", notes, easyStep("run", total, explicitZone ?: 2),
-                repeat(n, step("run", "time", sec), step("recover", "time", 60, "hr", 1)))
+        // Easy run with strides or hill sprints: "5 E + strides", "5 E + 6 hill sprints", "6 miles easy + 6 x 20 sec strides"
+        Regex("""\b(hill\s*sprints?|sprints?|strides?)\b""").find(t)?.let { m ->
+            val hills = m.value.startsWith("hill")
+            val n = Regex("""(\d+)\s*(?:[x×]\s*)?(?:\d+\s*(?:sec|s)\s*)?(?:hill\s*)?(?:sprints?|strides?)""").find(t)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("""(\d+)\s*[x×]""").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: 6
+            val sec = Regex("""(\d+)\s*(?:sec|s\b|seconds?)""").find(t)?.groupValues?.get(1)?.toIntOrNull() ?: if (hills) 10 else 20
+            val easyMiles = if (code != null) code.groupValues[1].toDoubleOrNull() else total
+            return workout(if (hills) "Easy + Hill Sprints" else "Easy + Strides", notes, easyStep("run", easyMiles, explicitZone ?: 2),
+                repeat(n.coerceIn(1, 20), step("run", "time", sec), step("recover", "time", if (hills) 90 else 60, "hr", 1)))
         }
 
         // A faster section inside a run: "10 miles with middle 6 @ goal pace", "12 mi w/ last 3 at tempo"
@@ -229,7 +245,7 @@ object Workouts {
         }
 
         // Steady runs (by distance, or by time when only minutes are given: "Steady 60 minutes").
-        val zone = explicitZone ?: when (label) { "Recovery Run" -> 1; "Race" -> 4; else -> 2 }
+        val zone = explicitZone ?: when (label) { "Recovery Run" -> 1; "Race", "Tempo Run" -> 4; "Marathon Pace Run", "Half Marathon Pace Run" -> 3; else -> 2 }
         val minutes = if (total == null) Regex("""(\d+)\s*(?:-\s*\d+\s*)?min""").find(t)?.groupValues?.get(1)?.toIntOrNull() else null
         val main = if (minutes != null) step("run", "time", minutes * 60, "hr", zone) else easyStep("run", total, zone)
         if (minutes != null) return workout("$label $minutes min", notes, main)
