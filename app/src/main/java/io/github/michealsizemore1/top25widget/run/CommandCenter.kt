@@ -22,6 +22,10 @@ object Summary {
 
     fun notes(ctx: Context, run: JSONObject): String {
         val lines = mutableListOf<String>()
+        run.optJSONObject("trail")?.let { t ->
+            lines += "Trail: ${t.optString("name")}" + (if (t.optBoolean("outAndBack")) " (out & back)" else "") +
+                (if (t.optBoolean("completed")) " ✓" else "")
+        }
         if (run.optInt("np") > 0) {
             var l = "Power: avg ${run.optInt("avgPower")} W · NP ${run.optInt("np")} W"
             if (run.optInt("cp") > 0) l += " · IF ${"%.2f".format(Locale.US, run.optDouble("intensity"))} · Stress ${run.optInt("stress")} (CP ${run.optInt("cp")})"
