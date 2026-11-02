@@ -334,6 +334,25 @@ class RunActivity : Activity() {
             addView(pill("Stryd", if (ps.getBoolean("stryd", false)) "✓" else "Connect", 0xFF50555E.toInt(), "/cmd/stryd",
                 "Phone is checking Stryd"), lp(true))
         })
+        // LiveTrack on/off for the next run (same switch as Settings and the phone).
+        col.addView(label("", Color.WHITE, 12f, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(7), 0, dp(7))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
+            fun show() {
+                val on = prefs.getBoolean("liveOn", false)
+                text = if (on) "● LiveTrack ON · tap to turn off" else "LiveTrack off · tap to turn on"
+                background = rounded(if (on) 0xFF1F6FB2.toInt() else C.CARD, 14)
+                setTextColor(if (on) Color.WHITE else C.MUTED)
+            }
+            show()
+            setOnClickListener {
+                if (prefs.getString("liveDb", "").isNullOrBlank()) { flash("Set up LiveTrack in the phone app first"); return@setOnClickListener }
+                val on = !prefs.getBoolean("liveOn", false)
+                prefs.edit().putBoolean("liveOn", on).apply()
+                show(); flash(if (on) "LiveTrack on — contacts get your link at Start" else "LiveTrack off")
+            }
+        })
 
         // Today's workout (tap to change).
         col.addView(card().apply {
@@ -415,6 +434,10 @@ class RunActivity : Activity() {
             if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null && !overlayOpen) renderStart() }
         }
 
+        col.addView(row("live", "LiveTrack (GPS on, shares your run)") {
+            if (prefs.getString("liveDb", "").isNullOrBlank()) flash("Set up LiveTrack in the phone app first")
+            else prefs.edit().putBoolean("liveOn", !prefs.getBoolean("liveOn", false)).apply()
+        })
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
         col.addView(row("voiceRow", "Audio prompts") { showVoiceSettings() })
         col.addView(row("bottomBtn", "Bottom button: start · lap · double-press finish") {
@@ -475,10 +498,6 @@ class RunActivity : Activity() {
         col.addView(row("track", "GPS map track (uses battery)") {
             Run.recordGpsTrack = !Run.recordGpsTrack; prefs.edit().putBoolean("track", Run.recordGpsTrack).apply()
         }.also { trackRow = it })
-        col.addView(row("live", "LiveTrack (GPS on, shares your run)") {
-            if (prefs.getString("liveDb", "").isNullOrBlank()) flash("Set up LiveTrack in the phone app first")
-            else prefs.edit().putBoolean("liveOn", !prefs.getBoolean("liveOn", false)).apply()
-        })
 
         col.addView(label("Done", Color.BLACK, 16f, true).apply {
             background = rounded(C.ACCENT, 24)
