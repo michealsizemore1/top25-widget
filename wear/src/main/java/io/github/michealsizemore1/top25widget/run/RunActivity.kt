@@ -364,11 +364,11 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
-        col.addView(row("quickBtn", "Orange Quick button: start / pause") {
+        col.addView(row("quickBtn", "Watch buttons: bottom start/finish · orange lap") {
             prefs.edit().putBoolean("quickButton", !prefs.getBoolean("quickButton", true)).apply()
         }.apply {
-            addView(label("Set it up once: watch Settings → Advanced features → Customize buttons → " +
-                "Quick button → Open app → Running. Bottom button: lap · when paused, finish · then save.", C.MUTED, 9f))
+            addView(label("Bottom: start · during a run, pause + finish · again to save. Orange: lap / next step · resume. " +
+                "For orange, set it once: watch Settings → Advanced features → Customize buttons → Quick button → Running.", C.MUTED, 9f))
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
@@ -618,6 +618,9 @@ class RunActivity : Activity() {
         // Back (or swipe) from a number editor returns to the start screen without saving.
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
+        if (screen == Screen.START && !Run.isActive && prefs.getBoolean("quickButton", true)) {
+            pulse(longArrayOf(0, 400)); startRun(); return     // bottom button = start
+        }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -732,31 +735,24 @@ class RunActivity : Activity() {
         return super.dispatchKeyEvent(event)
     }
 
-    /** Orange button: start → pause ⇄ resume (and resume from the Finish screen). */
+    /** Orange button: lap (or next workout step) while running; resume when paused / on the Finish screen. */
     private fun quickButton() {
+        if (screen != Screen.LIVE) return
         when {
-            screen == Screen.START && !Run.isActive -> {
-                editorRotary = null; overlayOpen = false; showSettings = false
-                pulse(longArrayOf(0, 400)); startRun()
-            }
-            screen == Screen.LIVE && (confirmingFinish || Run.state != Run.State.RUNNING) -> {
-                confirmingFinish = false; Run.resume(); pulse(longArrayOf(0, 120, 80, 120))
-                flash("RESUMED"); renderLive()
-            }
-            screen == Screen.LIVE -> { Run.pause(); pulse(longArrayOf(0, 500)); flash("PAUSED"); renderLive() }
-        }
-    }
-
-    /** Bottom button during a run: lap (or next step) → when paused, Finish… → on Finish, save. */
-    private fun backButton() {
-        when {
-            confirmingFinish -> { pulse(longArrayOf(0, 200, 100, 200, 100, 600)); finishRun() }
-            Run.state != Run.State.RUNNING -> {
-                confirmingFinish = true; page = 0; pulse(longArrayOf(0, 250, 100, 250)); renderLive()
+            confirmingFinish || Run.state != Run.State.RUNNING -> {
+                confirmingFinish = false; Run.resume(); pulse(longArrayOf(0, 120, 80, 120)); flash("RESUMED"); renderLive()
             }
             Run.hasWorkout && !Run.workoutDone -> { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
             else -> { Run.lap(); flash("LAP ${Run.laps.size}") }
         }
+    }
+
+    /** Bottom button during a run: pause and open Finish → press again to save. */
+    private fun backButton() {
+        if (confirmingFinish) { pulse(longArrayOf(0, 200, 100, 200, 100, 600)); finishRun(); return }
+        Run.pause()
+        confirmingFinish = true; page = 0
+        pulse(longArrayOf(0, 500)); renderLive()
     }
 
     private fun pulse(p: LongArray) {
