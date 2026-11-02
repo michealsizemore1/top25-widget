@@ -70,6 +70,7 @@
                 <data android:scheme="wear" android:host="*" android:path="/settings" />
                 <data android:scheme="wear" android:host="*" android:path="/workouts" />
                 <data android:scheme="wear" android:host="*" android:path="/phonestatus" />
+                <data android:scheme="wear" android:host="*" android:path="/runsettings" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/deleted/" />
             </intent-filter>
         </service>

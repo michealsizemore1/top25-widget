@@ -88,18 +88,13 @@ class RunActivity : Activity() {
             }
         }
 
-        Run.source = if (prefs.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
-        Run.autoPause = prefs.getBoolean("autoPause", true)
-        Run.recordGpsTrack = prefs.getBoolean("track", false)
-        Run.useStrap = prefs.getBoolean("useStrap", true)
+        RunSync.loadSettings(this)
+        // Changes made here go to the phone; changes made on the phone come back (RunSettingsListener).
+        io.github.michealsizemore1.top25widget.SettingsSync.watch(this, "run", "watch")
         loadScreens()
         // Keep the screen awake so the app keeps focus — otherwise, once the watch dims, the bottom
         // button goes to the system instead of the app (and closes it).
         if (prefs.getBoolean("keepOn", true)) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        Run.criticalPower = prefs.getInt("cp", 333)
-        Run.hrMax = prefs.getFloat("hrMax", 185f).toDouble()
-        Run.hrRest = prefs.getFloat("hrRest", 43.5f).toDouble()
-        Run.strydCalibration = prefs.getFloat("cal", 1f).toDouble()
 
         if (!RunService.running) RunStore.recoverInterrupted(this)
         // Load today's planned workout once a day (you can switch to a free run on the start screen).
@@ -114,6 +109,7 @@ class RunActivity : Activity() {
         RunSync.pullLatest(this) {
             if (!wrongDevice && screen == Screen.START && !overlayOpen && editorRotary == null) {
                 if (!Run.isActive && Run.workout == null) WatchWorkouts.today(this)?.let { Run.chooseWorkout(it) }
+                if (!Run.isActive) { RunSync.loadSettings(this); loadScreens() }
                 startBuilt = false; render()
             }
         }
@@ -124,6 +120,7 @@ class RunActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (wrongDevice) return
+        if (!Run.isActive) RunSync.loadSettings(this)
         loadScreens()
         Run.listen(onRunChanged)
         // Coming back from History (which stopped the idle sensors): turn them on again.
@@ -563,7 +560,7 @@ class RunActivity : Activity() {
     private fun saveScreens() {
         prefs.edit().putString("screens", screens.toString()).apply()
         builtScreen = -1
-        RunSync.tellPhone(this, "/cmd/screens", screens.toString().toByteArray()) { }
+        // (sent to the phone by SettingsSync, like every other setting)
     }
 
     private fun overlay(build: (LinearLayout) -> Unit) {

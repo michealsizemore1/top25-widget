@@ -74,6 +74,12 @@ object RunSync {
                         app.getSharedPreferences(PREFS, 0).edit().putLong("workoutsAt", best.getLong("at")).apply()
                     }
                 }
+                // Settings changed on the phone while this app wasn't listening.
+                val rs = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*" + io.github.michealsizemore1.top25widget.SettingsSync.PATH)))
+                rs.map { DataMapItem.fromDataItem(it).dataMap }.forEach {
+                    if (io.github.michealsizemore1.top25widget.SettingsSync.apply(app, "run", "watch", it)) loadSettings(app)
+                }
+                rs.release()
                 val st = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*/phonestatus")))
                 st.map { DataMapItem.fromDataItem(it).dataMap }.firstOrNull()?.let { m ->
                     app.getSharedPreferences("phonestatus", 0).edit()
@@ -99,6 +105,19 @@ object RunSync {
                 com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(app).putDataItem(req))
             } catch (e: Exception) { }
         }.start()
+    }
+
+    /** Puts the saved settings into the live run state. */
+    fun loadSettings(ctx: Context) {
+        val p = ctx.getSharedPreferences("run", 0)
+        Run.source = if (p.getString("source", "stryd") == "gps") Run.Source.GPS else Run.Source.STRYD
+        Run.autoPause = p.getBoolean("autoPause", true)
+        Run.recordGpsTrack = p.getBoolean("track", false)
+        Run.useStrap = p.getBoolean("useStrap", true)
+        Run.criticalPower = p.getInt("cp", 333)
+        Run.hrMax = p.getFloat("hrMax", 185f).toDouble()
+        Run.hrRest = p.getFloat("hrRest", 43.5f).toDouble()
+        Run.strydCalibration = p.getFloat("cal", 1f).toDouble()
     }
 
     fun pushAll(ctx: Context) {
@@ -157,6 +176,14 @@ object WatchWorkouts {
 class RunSettingsListener : WearableListenerService() {
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
+            // Settings changed on the phone.
+            if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == io.github.michealsizemore1.top25widget.SettingsSync.PATH) {
+                if (io.github.michealsizemore1.top25widget.SettingsSync.apply(this, "run", "watch", DataMapItem.fromDataItem(e.dataItem).dataMap)) {
+                    RunSync.loadSettings(this)
+                    RunService.instance?.applyHrMode()
+                }
+                return@forEach
+            }
             // A run deleted on the phone: delete the watch's copy too.
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path?.startsWith("/deleted/") == true) {
                 e.dataItem.uri.lastPathSegment?.toLongOrNull()?.let { RunStore.deleteStart(this, it) }

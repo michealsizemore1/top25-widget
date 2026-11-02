@@ -79,28 +79,29 @@ object RunSettings {
     fun screens(ctx: Context): org.json.JSONArray = try {
         org.json.JSONArray(p(ctx).getString("screens", null) ?: "").takeIf { it.length() > 0 }
     } catch (e: Exception) { null } ?: io.github.michealsizemore1.top25widget.RunFields.defaults()
-    fun saveScreens(ctx: Context, a: org.json.JSONArray) { p(ctx).edit().putString("screens", a.toString()).apply(); pushToWatch(ctx) }
+    fun saveScreens(ctx: Context, a: org.json.JSONArray) {
+        p(ctx).edit().putString("screens", a.toString()).putLong("settingsAt", System.currentTimeMillis()).apply(); pushToWatch(ctx)
+    }
 
     fun save(ctx: Context, hrMax: Double, hrRest: Double, cp: Int, cal: Double, ccUrl: String) {
         p(ctx).edit().putFloat("hrMax", hrMax.toFloat()).putFloat("hrRest", hrRest.toFloat())
-            .putInt("cp", cp).putFloat("cal", cal.toFloat()).putString("ccUrl", ccUrl).apply()
+            .putInt("cp", cp).putFloat("cal", cal.toFloat()).putString("ccUrl", ccUrl)
+            .putLong("settingsAt", System.currentTimeMillis()).apply()
         pushToWatch(ctx)
     }
 
-    /** Send the zones to the watch (it picks them up whenever it's connected). */
+    // Shared with the watch (same names): run options and audio prompts.
+    fun bool(ctx: Context, key: String) = p(ctx).getBoolean(key, (io.github.michealsizemore1.top25widget.SettingsSync.KEYS[key]?.second as? Boolean) ?: true)
+    fun setBool(ctx: Context, key: String, v: Boolean) { p(ctx).edit().putBoolean(key, v).putLong("settingsAt", System.currentTimeMillis()).apply(); pushToWatch(ctx) }
+    fun source(ctx: Context) = p(ctx).getString("source", "stryd") ?: "stryd"
+    fun setSource(ctx: Context, v: String) { p(ctx).edit().putString("source", v).putLong("settingsAt", System.currentTimeMillis()).apply(); pushToWatch(ctx) }
+    fun voiceEvery(ctx: Context) = p(ctx).getInt("voiceEvery", 0)
+    fun setVoiceEvery(ctx: Context, v: Int) { p(ctx).edit().putInt("voiceEvery", v).putLong("settingsAt", System.currentTimeMillis()).apply(); pushToWatch(ctx) }
+
+    /** Send the settings to the watch (it picks them up whenever it's connected). */
     fun pushToWatch(ctx: Context) {
         val app = ctx.applicationContext
-        Thread {
-            try {
-                val req = PutDataMapRequest.create("/settings").apply {
-                    dataMap.putDouble("hrMax", hrMax(app)); dataMap.putDouble("hrRest", hrRest(app))
-                    dataMap.putInt("cp", cp(app)); dataMap.putDouble("cal", cal(app))
-                    dataMap.putString("screens", screens(app).toString())
-                    dataMap.putLong("at", System.currentTimeMillis())
-                }.asPutDataRequest().setUrgent()
-                Tasks.await(Wearable.getDataClient(app).putDataItem(req))
-            } catch (e: Exception) { }
-        }.start()
+        io.github.michealsizemore1.top25widget.SettingsSync.push(app, "runsettings", "phone")
     }
 }
 
@@ -112,6 +113,9 @@ class RunReceiverService : WearableListenerService() {
     }
 
     override fun onDataChanged(events: DataEventBuffer) {
+        // Settings changed on the watch.
+        events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == io.github.michealsizemore1.top25widget.SettingsSync.PATH }
+            .forEach { io.github.michealsizemore1.top25widget.SettingsSync.apply(this, "runsettings", "phone", DataMapItem.fromDataItem(it.dataItem).dataMap) }
         // A run deleted on the watch: delete the phone's copy too.
         events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path?.startsWith("/deleted/") == true }
             .forEach { e -> e.dataItem.uri.lastPathSegment?.toLongOrNull()?.let { PhoneRuns.delete(this, it); PhoneStatus.push(this) } }

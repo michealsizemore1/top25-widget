@@ -20,6 +20,7 @@ class RunSettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        io.github.michealsizemore1.top25widget.SettingsSync.watch(this, "runsettings", "phone")
         render()
     }
 
@@ -51,8 +52,52 @@ class RunSettingsActivity : Activity() {
             startActivity(Intent(ctx, ScreensActivity::class.java))
         }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
 
+        // ---- run options (same as the watch's Settings; changes on either show on both)
+        col.addView(RunUi.section(this, "RUN OPTIONS · SAME ON WATCH"))
+        fun switch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) =
+            col.addView(RunUi.card(ctx).apply {
+                addView(Switch(ctx).apply {
+                    text = title; setTextColor(Color.WHITE); textSize = 15f
+                    isChecked = checked
+                    setOnCheckedChangeListener { _, on -> onChange(on) }
+                })
+                if (sub.isNotBlank()) addView(RunUi.text(ctx, sub, RunUi.MUTED, 12f))
+            })
+        switch("Use GPS for pace & distance", "Off = Stryd footpod (recommended)", RunSettings.source(this) == "gps") {
+            RunSettings.setSource(ctx, if (it) "gps" else "stryd")
+        }
+        switch("Auto-pause", "Pauses when you stop, resumes when you run", RunSettings.bool(this, "autoPause")) { RunSettings.setBool(ctx, "autoPause", it) }
+        switch("Record GPS map track", "With Stryd pace; uses more battery", RunSettings.bool(this, "track")) {
+            RunSettings.setBool(ctx, "track", it)
+        }
+        switch("Chest strap (H10) with wrist backup", "Off = watch wrist sensor only", RunSettings.bool(this, "useStrap")) { RunSettings.setBool(ctx, "useStrap", it) }
+        switch("Keep watch screen on in Running", "", RunSettings.bool(this, "keepOn")) { RunSettings.setBool(ctx, "keepOn", it) }
+        switch("Bottom button: start · lap · double-press finish", "", RunSettings.bool(this, "bottomBtn")) { RunSettings.setBool(ctx, "bottomBtn", it) }
+        switch("Gestures: double-tap = lap · hold = finish", "", RunSettings.bool(this, "gestures")) { RunSettings.setBool(ctx, "gestures", it) }
+
+        // ---- audio prompts
+        col.addView(RunUi.section(this, "AUDIO PROMPTS · SAME ON WATCH"))
+        col.addView(RunUi.text(this, "Spoken on the watch: through Bluetooth headphones when connected, otherwise the watch speaker.",
+            RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(6), dp(4), 0) })
+        switch("Audio prompts", "", RunSettings.bool(this, "voice")) { RunSettings.setBool(ctx, "voice", it) }
+        switch("Each lap / mile", "Time, pace, heart rate, power", RunSettings.bool(this, "voiceLaps")) { RunSettings.setBool(ctx, "voiceLaps", it) }
+        switch("Workout steps", "What's next, and step results", RunSettings.bool(this, "voiceSteps")) { RunSettings.setBool(ctx, "voiceSteps", it) }
+        switch("Target alerts", "Speed up / ease off", RunSettings.bool(this, "voiceAlerts")) { RunSettings.setBool(ctx, "voiceAlerts", it) }
+        val everyOpts = listOf(0, 5, 10, 15, 20, 30)
+        col.addView(RunUi.card(this).apply {
+            val every = RunSettings.voiceEvery(ctx)
+            addView(RunUi.text(ctx, "Time update every: " + (if (every == 0) "Off" else "$every minutes") + "  ›", RunUi.ACCENT, 15f, true))
+            addView(RunUi.text(ctx, "Distance, time, average pace, heart rate", RunUi.MUTED, 12f))
+            setOnClickListener {
+                android.app.AlertDialog.Builder(ctx).setTitle("Time update every")
+                    .setItems(everyOpts.map { if (it == 0) "Off" else "$it minutes" }.toTypedArray()) { _, i ->
+                        RunSettings.setVoiceEvery(ctx, everyOpts[i]); render()
+                    }.show()
+            }
+        })
+
         // ---- zones
-        col.addView(RunUi.section(this, "ZONES · SENT TO YOUR WATCH"))
+        col.addView(RunUi.section(this, "ZONES · SAME ON WATCH"))
         val maxHr = input("Max heart rate (bpm)", fmt(RunSettings.hrMax(this)), num)
         val restHr = input("Resting heart rate (bpm)", fmt(RunSettings.hrRest(this)), dec)
         val cp = input("Critical Power (W)", RunSettings.cp(this).toString(), num)
