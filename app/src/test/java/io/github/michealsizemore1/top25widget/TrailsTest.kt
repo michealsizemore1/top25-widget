@@ -44,6 +44,7 @@ class TrailsTest {
         assertTrue("turnaround" in ev)
         assertTrue("trail_done" in ev)
         assertTrue(ev.any { it.startsWith("turn_") })
+        assertEquals(listOf("turn_left", "turnaround", "turn_right", "trail_done"), ev)
         val nav2 = TrailNav(t, false)
         val off = (1..6).flatMap { nav2.update(40.002, -104.998) }   // ~170 m east of the trail
         println("off=$off offBy=${nav2.offBy.toInt()}")

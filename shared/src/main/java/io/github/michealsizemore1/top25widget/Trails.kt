@@ -311,12 +311,13 @@ class TrailNav(val trail: Trail, val outAndBack: Boolean) {
         // Look near where we were (so a trail that doubles back doesn't confuse it); widen if we're lost.
         // Nearest stretch of the path that isn't behind us — on an out-and-back the way out and the way
         // back lie on the same ground, so prefer the one further along when they're about equally close.
-        fun best(from: Int, to: Int): Triple<Int, Double, Double> {
+        fun best(from: Int, to: Int, wide: Boolean = false): Triple<Int, Double, Double> {
             var bi = -1; var bd = Double.MAX_VALUE; var bf = 0.0
             for (i in from until to) {
                 val (d, f) = Trails.segInfo(p, path[i], path[i + 1])
                 val pos = cum[i] + (cum[i + 1] - cum[i]) * f
                 if (pos < progress - 30) continue
+                if (!wide && pos > progress + 150) continue   // can't have gone that far since the last fix
                 if (d < bd - 2.0 || (d <= bd + 2.0 && bi >= 0 && pos > cum[bi])) { bd = d; bi = i; bf = f }
             }
             if (bi < 0) { bi = lastIdx; bd = Trails.segInfo(p, path[bi], path[bi + 1]).first; bf = 0.0 }
@@ -324,7 +325,7 @@ class TrailNav(val trail: Trail, val outAndBack: Boolean) {
         }
         val window = lastIdx.coerceAtLeast(0) to (lastIdx + 40).coerceAtMost(path.size - 1)
         var (i, d, f) = best(window.first, window.second)
-        if (d > 50) { val all = best(0, path.size - 1); if (all.second < d) { i = all.first; d = all.second; f = all.third } }
+        if (d > 50) { val all = best(0, path.size - 1, wide = true); if (all.second < d) { i = all.first; d = all.second; f = all.third } }
         lastIdx = i
         offBy = d
         // Allow a little backward drift (GPS wobble), but don't jump far back.
