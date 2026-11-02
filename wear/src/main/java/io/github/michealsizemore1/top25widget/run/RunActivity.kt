@@ -179,6 +179,7 @@ class RunActivity : Activity() {
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
         set("quickBtn", if (prefs.getBoolean("quickButton", true)) "On" else "Off")
+        set("lastKey", "Last button the app saw: " + (prefs.getString("lastKey", null) ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
@@ -367,8 +368,9 @@ class RunActivity : Activity() {
         col.addView(row("quickBtn", "Bottom button: start · lap · double-press finish") {
             prefs.edit().putBoolean("quickButton", !prefs.getBoolean("quickButton", true)).apply()
         }.apply {
-            addView(label("Press once on this screen to start. During a run: press once for a lap (next step in a workout), " +
+            addView(label("Press once on the Running screen to start. During a run: press once for a lap (next step in a workout), " +
                 "press twice quickly to finish and save.", C.MUTED, 9f))
+            addView(label("", C.DIM, 9f).also { startValues["lastKey"] = it })
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
@@ -612,20 +614,37 @@ class RunActivity : Activity() {
     }
 
     @Deprecated("Deprecated in Java")
+    /** Back gesture (swipe): navigation only — never starts or ends a run, never leaves mid-run. */
     override fun onBackPressed() {
-        // During a run the bottom button is a run control, never "leave the app".
-        if (screen == Screen.LIVE && !wrongDevice) {
-            if (prefs.getBoolean("quickButton", true)) backButton()
-            return
-        }
-        // Back (or swipe) from a number editor returns to the start screen without saving.
+        if (screen == Screen.LIVE && !wrongDevice) return
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
-        if (screen == Screen.START && !Run.isActive && prefs.getBoolean("quickButton", true)) {
-            pulse(longArrayOf(0, 400)); startRun(); return     // bottom button = start
-        }
         if (screen == Screen.SUMMARY) { finish(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
+    /**
+     * The physical bottom button, caught as a raw key press before the system turns it into
+     * "back" (newer Wear OS skips onBackPressed for buttons, which is why it used to leave the app).
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (wrongDevice) return super.dispatchKeyEvent(event)
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            prefs.edit().putString("lastKey", android.view.KeyEvent.keyCodeToString(event.keyCode)).apply()   // shown in Settings
+        }
+        val isButton = event.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+            event.keyCode == android.view.KeyEvent.KEYCODE_STEM_PRIMARY ||
+            event.keyCode == android.view.KeyEvent.KEYCODE_STEM_1
+        if (!isButton || !prefs.getBoolean("quickButton", true)) return super.dispatchKeyEvent(event)
+        // Only handle it where the button has a run job; elsewhere it's a normal back.
+        val runControl = screen == Screen.LIVE ||
+            (screen == Screen.START && !Run.isActive && !showSettings && !overlayOpen && editorRotary == null)
+        if (!runControl) return super.dispatchKeyEvent(event)
+        if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) {
+            if (screen == Screen.LIVE) backButton()
+            else { pulse(longArrayOf(0, 400)); startRun() }
+        }
+        return true   // consume both down and up so the system doesn't also go back
     }
 
     // ---------------------------------------------------------------- live pages
