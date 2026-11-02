@@ -191,7 +191,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
 
     /** GPS runs only when it's the pace source or a GPS track is wanted. */
     private fun updateGps() {
-        val want = (Run.source == Run.Source.GPS || Run.recordGpsTrack) &&
+        val want = (Run.source == Run.Source.GPS || Run.recordGpsTrack || Run.nav != null) &&
             has(this, Manifest.permission.ACCESS_FINE_LOCATION)
         if (want && !gpsOn) startGps() else if (!want && gpsOn) stopGps()
     }
@@ -219,6 +219,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
         val prev = lastLocation
         val moved = if (prev == null) 0.0 else prev.distanceTo(loc).toDouble().let { if (it > 60) 0.0 else it }
         lastLocation = loc
+        if (loc.hasBearing() && loc.hasSpeed() && loc.speed > 1f) Run.gpsBearing = loc.bearing
         Run.onGps(loc.latitude, loc.longitude, if (loc.hasSpeed()) loc.speed.toDouble() else 0.0, moved)
     }
 
@@ -236,6 +237,10 @@ class RunService : Service(), SensorEventListener, LocationListener {
             "autopause" -> longArrayOf(0, 120)
             "autoresume" -> longArrayOf(0, 120, 80, 120)
             "step" -> longArrayOf(0, 300, 120, 300, 120, 300)          // new workout step
+            "offroute" -> longArrayOf(0, 600, 150, 600, 150, 600)      // off the trail
+            "onroute" -> longArrayOf(0, 150, 100, 150)
+            "turn_left", "turn_right" -> longArrayOf(0, 200, 100, 200)
+            "turnaround", "trail_done" -> longArrayOf(0, 500, 150, 500)
             "workout_done" -> longArrayOf(0, 700, 200, 700)
             "push" -> longArrayOf(0, 90, 90, 90, 90, 90)                // speed up / work harder
             "ease" -> longArrayOf(0, 600)                               // ease off

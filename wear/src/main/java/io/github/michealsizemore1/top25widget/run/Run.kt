@@ -287,6 +287,7 @@ object Run {
         RunStore.clearCurrent(ctx)
         state = State.IDLE
         chooseWorkout(null)   // next run starts as a free run unless a workout is picked
+        nav = null
         changed()
         return json
     }
@@ -308,11 +309,23 @@ object Run {
     // ---------------------------------------------------------------- sensor input
 
     /** GPS reports each new fix with the distance moved since the previous good fix. */
+    // ---------------------------------------------------------------- trail navigation
+    /** The trail being followed (null = no trail). */
+    @Volatile var nav: io.github.michealsizemore1.top25widget.TrailNav? = null
+    @Volatile var gpsBearing = -1f
+
+    fun chooseTrail(t: io.github.michealsizemore1.top25widget.Trail?, outAndBack: Boolean) {
+        nav = t?.let { io.github.michealsizemore1.top25widget.TrailNav(it, outAndBack) }
+        changed()
+    }
+
     fun onGps(lat: Double, lon: Double, speed: Double, metersMoved: Double) {
         gpsLat = lat; gpsLon = lon; gpsSpeed = speed; gpsFix = true; gpsLastUpdate = System.currentTimeMillis()
         if (state == State.RUNNING || state == State.AUTO_PAUSED) {
             if (state == State.RUNNING) gpsPendingMeters += metersMoved
-            if (recordGpsTrack || source == Source.GPS) track += doubleArrayOf(lat, lon, movingSeconds.toDouble(), elapsedSeconds.toDouble())
+            if (recordGpsTrack || source == Source.GPS || nav != null) track += doubleArrayOf(lat, lon, movingSeconds.toDouble(), elapsedSeconds.toDouble())
+            // Following a trail: off-route, turns, turnaround, finish.
+            if (state == State.RUNNING) nav?.update(lat, lon)?.forEach { onEvent?.invoke(it) }
         }
     }
 
@@ -430,6 +443,8 @@ object Run {
         }
         if (source == Source.STRYD) put("calibration", strydCalibration)
         put("hrMax", hrMax); put("hrRest", hrRest)
+        nav?.let { n -> put("trail", JSONObject().put("name", n.trail.name).put("outAndBack", n.outAndBack)
+            .put("length", n.total).put("completed", n.finished)) }
         workout?.let { w ->
             put("workout", JSONObject().put("name", w.optString("name")).put("notes", w.optString("notes"))
                 .put("steps", w.optJSONArray("steps")).put("completed", workoutDone)

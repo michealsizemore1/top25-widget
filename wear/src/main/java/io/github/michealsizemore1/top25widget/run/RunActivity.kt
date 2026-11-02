@@ -60,7 +60,8 @@ class RunActivity : Activity() {
     private var overlayOpen = false
     /** Live pages in order: 0 controls, 7 workout step (only with a workout), 1 main, 2 heart, 3 power, 4 lap, 5 averages, 6 stress. */
     /** Live pages: 0 controls, 7 workout step (with a workout), then your data screens (100 + index). */
-    private fun pageOrder() = listOf(0) + (if (Run.hasWorkout) listOf(7) else emptyList()) + (0 until screens.length()).map { 100 + it }
+    private fun pageOrder() = listOf(0) + (if (Run.hasWorkout) listOf(7) else emptyList()) +
+        (if (Run.nav != null) listOf(8) else emptyList()) + (0 until screens.length()).map { 100 + it }   // 8 = trail map
     private var builtScreen = -1
     /** Data screens set up on the phone (Run settings → Watch data screens). */
     private var screens: org.json.JSONArray = io.github.michealsizemore1.top25widget.RunFields.defaults()
@@ -211,6 +212,12 @@ class RunActivity : Activity() {
         set("keepOn", if (prefs.getBoolean("keepOn", true)) "On" else "Off")
         set("keyLog", "Button log:\n" + (prefs.getString("buttonLog", null)?.lines()?.take(3)?.joinToString("\n") ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
+        startValues["trailLine"]?.apply {
+            val n = Run.nav
+            text = if (n == null) "" else "Trail: ${n.trail.name} · " + String.format(java.util.Locale.US, "%.1f mi", n.total / 1609.344) +
+                (if (n.outAndBack) " out & back" else "")
+            visibility = if (n == null) View.GONE else View.VISIBLE
+        }
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
             val w = Run.workout
@@ -332,6 +339,7 @@ class RunActivity : Activity() {
             addView(label("TODAY", C.MUTED, 10f, true))
             addView(label("", Color.WHITE, 15f, true).also { startValues["workout"] = it })
             addView(label("", C.MUTED, 10f).apply { startValues["workoutOutline"] = this; visibility = View.GONE })
+            addView(label("", 0xFF46C46E.toInt(), 11f, true).apply { startValues["trailLine"] = this; visibility = View.GONE })
             setOnClickListener { showWorkoutPicker() }
         })
 
@@ -363,6 +371,7 @@ class RunActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
             setOnClickListener { onClick() }
         }
+        col.addView(navButton("Trails near me", 0xFF46C46E.toInt(), Color.BLACK) { showTrails() })
         col.addView(navButton("Workouts & Plan", C.ACCENT, Color.BLACK) { showWorkoutPicker() })
         col.addView(navButton("History", C.CARD, Color.WHITE) { startActivity(Intent(this, RunHistoryActivity::class.java)) })
         col.addView(navButton("Settings", C.CARD, Color.WHITE) { showSettings = true; startBuilt = false; renderStart() })
@@ -528,6 +537,104 @@ class RunActivity : Activity() {
         root.removeAllViews()
         root.addView(col)
         root.isFocusable = true; root.isFocusableInTouchMode = true; root.requestFocus()
+    }
+
+    // ---------------------------------------------------------------- trails (no phone needed: GPS + LTE)
+
+    private var trailCache: Pair<Long, List<io.github.michealsizemore1.top25widget.Trail>>? = null
+    private var trailStatus = ""
+
+    private fun showTrails(): Unit = overlay { col ->
+        col.addView(label("Trails near me", Color.WHITE, 18f, true))
+        if (Run.nav != null) col.addView(card("No trail", "Clear ${Run.nav?.trail?.name}", C.STOP) {
+            Run.chooseTrail(null, false); overlayOpen = false; startBuilt = false; renderStart()
+        })
+        val cached = trailCache?.takeIf { System.currentTimeMillis() - it.first < 30 * 60_000 }?.second
+        if (cached == null) {
+            col.addView(label(trailStatus.ifBlank { "Finding your location…" }, C.MUTED, 12f).apply { setPadding(0, dp(10), 0, 0) })
+            if (trailStatus.isBlank() || trailStatus.startsWith("Finding")) loadTrails()
+            else col.addView(card("Try again", "", C.ACCENT) { trailStatus = ""; showTrails() })
+            return@overlay
+        }
+        if (cached.isEmpty()) col.addView(label("No mapped trails within about 4 miles.", C.MUTED, 12f))
+        cached.forEach { t ->
+            val mi = t.lengthM / 1609.344
+            col.addView(card(t.name, String.format(java.util.Locale.US, "%.1f mi %s · %s · %s away", mi, if (t.loop) "loop" else "one way",
+                t.difficulty.takeIf { t.elevations != null || t.sac.isNotBlank() } ?: (if (t.surface.isNotBlank()) t.surface else "trail"),
+                distText(t.distToStartM))) { showTrail(t) })
+        }
+        col.addView(card("Refresh", "Search again from here", C.ACCENT) { trailCache = null; trailStatus = ""; showTrails() })
+    }
+
+    private fun distText(m: Double) = if (m < 160) "${(m * 3.28084).toInt()} ft" else String.format(java.util.Locale.US, "%.1f mi", m / 1609.344)
+
+    /** Gets a location (GPS, or the last known one if recent), then trails around it from OpenStreetMap. */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun loadTrails() {
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            trailStatus = "Allow location for Running to find trails"; return
+        }
+        trailStatus = "Finding your location…"
+        val lm = getSystemService(android.location.LocationManager::class.java)
+        fun search(lat: Double, lon: Double) {
+            trailStatus = "Looking for trails…"
+            runOnUiThread { if (overlayOpen) showTrails() }
+            Thread {
+                trailStatus = try {
+                    val list = io.github.michealsizemore1.top25widget.Trails.fetchNearby(lat, lon)
+                    trailCache = System.currentTimeMillis() to list
+                    ""
+                } catch (e: Exception) { "Couldn't get trails: ${e.message}" }
+                runOnUiThread { if (overlayOpen) showTrails() }
+            }.start()
+        }
+        val recent = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER, android.location.LocationManager.FUSED_PROVIDER)
+            .mapNotNull { try { lm.getLastKnownLocation(it) } catch (e: Exception) { null } }
+            .filter { System.currentTimeMillis() - it.time < 10 * 60_000 }.maxByOrNull { it.time }
+        if (recent != null) { search(recent.latitude, recent.longitude); return }
+        if (Run.gpsFix && System.currentTimeMillis() - Run.gpsLastUpdate < 60_000) { search(Run.gpsLat, Run.gpsLon); return }
+        try {
+            lm.getCurrentLocation(android.location.LocationManager.GPS_PROVIDER, null, mainExecutor) { loc ->
+                if (loc != null) search(loc.latitude, loc.longitude)
+                else { trailStatus = "No GPS fix — step outside and try again"; if (overlayOpen) showTrails() }
+            }
+        } catch (e: Exception) { trailStatus = "Location is off"; }
+    }
+
+    /** One trail: facts, elevation profile, and how to run it. */
+    private fun showTrail(t: io.github.michealsizemore1.top25widget.Trail): Unit = overlay { col ->
+        val mi = t.lengthM / 1609.344
+        col.addView(label(t.name, Color.WHITE, 16f, true))
+        val facts = mutableListOf(String.format(java.util.Locale.US, "%.2f mi %s", mi, if (t.loop) "loop" else "one way"))
+        if (t.elevations != null) facts += "${(t.climbM * 3.28084).toInt()} ft climb"
+        facts += t.difficulty
+        if (t.surface.isNotBlank()) facts += t.surface
+        facts += distText(t.distToStartM) + " away"
+        col.addView(label(facts.joinToString(" · "), C.MUTED, 11f))
+        val w = resources.displayMetrics.widthPixels * 3 / 4
+        val profile = android.widget.ImageView(this)
+        col.addView(profile, LinearLayout.LayoutParams(w, dp(50)).apply { topMargin = dp(6); gravity = Gravity.CENTER_HORIZONTAL })
+        fun showProfile() { TrailProfile.bitmap(t, w, dp(50), resources.displayMetrics.density)?.let { profile.setImageBitmap(it) } }
+        if (t.elevations == null) {
+            col.addView(label("Loading elevation…", C.DIM, 10f).also { status ->
+                Thread {
+                    val ok = try { io.github.michealsizemore1.top25widget.Trails.fetchElevation(t); true } catch (e: Exception) { false }
+                    runOnUiThread { if (ok) { status.text = ""; showTrail(t) } else status.text = "Elevation unavailable" }
+                }.start()
+            })
+        } else showProfile()
+        fun choose(outAndBack: Boolean) {
+            Run.chooseTrail(t, outAndBack)
+            RunService.instance?.let { /* GPS turns on with the trail */ }
+            overlayOpen = false; startBuilt = false; renderStart()
+            flash("Trail set — press Start")
+        }
+        if (t.loop) col.addView(card("Run this loop", String.format(java.util.Locale.US, "%.2f mi", mi), C.ACCENT) { choose(false) })
+        else {
+            col.addView(card("Out & back", String.format(java.util.Locale.US, "%.2f mi · turn around at the end", mi * 2), C.ACCENT) { choose(true) })
+            col.addView(card("One way", String.format(java.util.Locale.US, "%.2f mi", mi), C.ACCENT) { choose(false) })
+        }
+        col.addView(card("Back", "", C.ACCENT) { showTrails() })
     }
 
     // ---------------------------------------------------------------- audio prompts settings
@@ -830,6 +937,8 @@ class RunActivity : Activity() {
         page.addView(dots)
         root.addView(page)
         root.addView(customBox)
+        trailView = TrailMapView(this).apply { visibility = View.GONE; layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT) }
+        root.addView(trailView)
 
         gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
@@ -927,6 +1036,11 @@ class RunActivity : Activity() {
         fieldD.first.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
 
         val stateNow = when (Run.state) { Run.State.PAUSED -> "PAUSED"; Run.State.AUTO_PAUSED -> "AUTO-PAUSED"; else -> null }
+        if (page == 8) {
+            pageView.visibility = View.GONE; customBox.visibility = View.GONE
+            trailView.visibility = View.VISIBLE; trailView.invalidate(); return
+        }
+        trailView.visibility = View.GONE
         if (page >= 100) { renderScreen(page - 100, stateNow, order); return }
         pageView.visibility = View.VISIBLE
         customBox.visibility = View.GONE
@@ -1074,6 +1188,7 @@ class RunActivity : Activity() {
     // ---------------------------------------------------------------- custom data screens
 
     private lateinit var pageView: View
+    private lateinit var trailView: TrailMapView
     private lateinit var customBox: LinearLayout
     private val cells = mutableListOf<Pair<String, Pair<TextView, TextView>>>()   // key → (label, value)
     private lateinit var customState: TextView

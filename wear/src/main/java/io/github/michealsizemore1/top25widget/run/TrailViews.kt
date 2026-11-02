@@ -1,0 +1,115 @@
+package io.github.michealsizemore1.top25widget.run
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Typeface
+import android.view.View
+import io.github.michealsizemore1.top25widget.Geo
+import io.github.michealsizemore1.top25widget.Trail
+import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.min
+
+/**
+ * The trail screen during a run: the trail line around you (north up), the part already done
+ * dimmed, you as an arrow, and distance left / next turn / climb left as text.
+ */
+class TrailMapView(ctx: Context) : View(ctx) {
+    private val density = ctx.resources.displayMetrics.density
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.WHITE }
+
+    /** How many meters from the center to the edge of the screen. */
+    var radiusM = 300.0
+
+    override fun onDraw(c: Canvas) {
+        super.onDraw(c)
+        val nav = Run.nav ?: return
+        val w = width.toFloat(); val h = height.toFloat()
+        val cx = w / 2; val cy = h / 2
+        c.drawColor(Color.BLACK)
+        val haveFix = Run.gpsFix && System.currentTimeMillis() - Run.gpsLastUpdate < 15_000
+        // Center on you (or on the whole trail before the first GPS fix).
+        val center = if (haveFix) doubleArrayOf(Run.gpsLat, Run.gpsLon) else nav.path[nav.path.size / 2]
+        val r = if (haveFix) radiusM else (nav.path.maxOf { Geo.dist(it, center) } * 1.1).coerceAtLeast(200.0)
+        val scale = (min(w, h) / 2 * 0.9 / r).toFloat()
+        val k = cos(Math.toRadians(center[0])) * 111320.0
+        fun x(p: DoubleArray) = cx + ((p[1] - center[1]) * k).toFloat() * scale
+        fun y(p: DoubleArray) = cy - ((p[0] - center[0]) * 110540.0).toFloat() * scale
+
+        // Trail: done part dim, the rest bright.
+        val done = Path(); val ahead = Path()
+        var started = false; var aheadStarted = false
+        for (i in nav.path.indices) {
+            val p = nav.path[i]
+            if (nav.cum[i] <= nav.progress) { if (!started) { done.moveTo(x(p), y(p)); started = true } else done.lineTo(x(p), y(p)) }
+            if (nav.cum[i] >= nav.progress || (i + 1 < nav.path.size && nav.cum[i + 1] > nav.progress)) {
+                if (!aheadStarted) { ahead.moveTo(x(p), y(p)); aheadStarted = true } else ahead.lineTo(x(p), y(p))
+            }
+        }
+        line.strokeWidth = 5 * density
+        line.color = 0xFF3A4440.toInt(); c.drawPath(done, line)
+        line.color = if (nav.offRoute) 0xFFE5484D.toInt() else 0xFFD4E635.toInt(); c.drawPath(ahead, line)
+        // Start (green) and end/turnaround (white) markers.
+        fill.color = 0xFF46C46E.toInt(); c.drawCircle(x(nav.path.first()), y(nav.path.first()), 5 * density, fill)
+        if (nav.outAndBack) nav.trail.points.last().let { fill.color = Color.WHITE; c.drawCircle(x(it), y(it), 4 * density, fill) }
+
+        // You.
+        if (haveFix) {
+            val me = doubleArrayOf(Run.gpsLat, Run.gpsLon)
+            val px = x(me); val py = y(me)
+            fill.color = 0xFF4FA3E0.toInt()
+            if (Run.gpsBearing >= 0) {
+                c.save(); c.rotate(Run.gpsBearing, px, py)
+                val s = 10 * density
+                c.drawPath(Path().apply { moveTo(px, py - s); lineTo(px + s * 0.7f, py + s * 0.7f); lineTo(px, py + s * 0.3f); lineTo(px - s * 0.7f, py + s * 0.7f); close() }, fill)
+                c.restore()
+            } else c.drawCircle(px, py, 7 * density, fill)
+        }
+
+        // Text: status on top, distance left and what's next at the bottom.
+        text.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        text.textSize = 13 * density
+        val top = when {
+            !haveFix -> "Finding GPS…"
+            nav.offRoute -> "OFF ROUTE · ${feet(nav.offBy)}"
+            nav.finished -> "TRAIL COMPLETE"
+            else -> nav.trail.name.uppercase(Locale.US).take(22)
+        }
+        text.color = if (nav.offRoute) 0xFFE5484D.toInt() else 0xFFD4E635.toInt()
+        c.drawText(top, cx, h * 0.17f, text)
+        text.color = Color.WHITE; text.textSize = 20 * density
+        c.drawText(String.format(Locale.US, "%.2f mi left", nav.remaining / 1609.344), cx, h * 0.83f, text)
+        text.textSize = 12 * density; text.color = 0xFF9AA3A0.toInt()
+        val sub = buildList {
+            nav.nextTurn?.let { (d, dir) -> if (d < 400) add("${dir.replaceFirstChar { it.uppercase() }} in ${feet(d)}") }
+            nav.climbLeft().takeIf { it > 5 }?.let { add("${(it * 3.28084).toInt()} ft climb left") }
+            if (nav.outAndBack && nav.progress < nav.turnaroundM) add("turn around in " + String.format(Locale.US, "%.2f mi", (nav.turnaroundM - nav.progress) / 1609.344))
+        }.take(2).joinToString(" · ")
+        c.drawText(sub, cx, h * 0.91f, text)
+    }
+
+    private fun feet(m: Double) = if (m < 300) "${(m * 3.28084 / 10).toInt() * 10} ft" else String.format(Locale.US, "%.2f mi", m / 1609.344)
+}
+
+/** A small elevation profile picture for the trail details screen. */
+object TrailProfile {
+    fun bitmap(t: Trail, w: Int, h: Int, density: Float): Bitmap? {
+        val e = t.elevations ?: return null
+        if (e.size < 2) return null
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val lo = e.min(); val hi = e.max().coerceAtLeast(lo + 10)
+        fun y(v: Double) = (h - 4 * density - (v - lo) / (hi - lo) * (h - 8 * density)).toFloat()
+        val path = Path().apply { moveTo(0f, h.toFloat()); e.forEachIndexed { i, v -> lineTo(w * i / (e.size - 1f), y(v)) }; lineTo(w.toFloat(), h.toFloat()); close() }
+        c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x5546C46E })
+        val top = Path().apply { e.forEachIndexed { i, v -> if (i == 0) moveTo(0f, y(v)) else lineTo(w * i / (e.size - 1f), y(v)) } }
+        c.drawPath(top, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2 * density; color = 0xFF46C46E.toInt() })
+        return bmp
+    }
+}

@@ -84,6 +84,12 @@ object Speaker {
                 say((done?.let { "$it. " } ?: "") + "Next, " + stepText())
             }
             "workout_done" -> if (steps()) say("Workout complete. Keep running or finish when ready.")
+            "offroute" -> say("Off route. " + (Run.nav?.let { "Trail is ${(it.offBy * 3.28084 / 10).toInt() * 10} feet away" } ?: ""))
+            "onroute" -> say("Back on route")
+            "turn_left" -> say("Sharp left ahead")
+            "turn_right" -> say("Sharp right ahead")
+            "turnaround" -> say("Turnaround point. Head back the way you came.")
+            "trail_done" -> say("Trail complete. " + miles(Run.distance) + " in " + duration(Run.movingSeconds))
             "push" -> if (alerts()) say(targetText(push = true))
             "ease" -> if (alerts()) say(targetText(push = false))
         }
