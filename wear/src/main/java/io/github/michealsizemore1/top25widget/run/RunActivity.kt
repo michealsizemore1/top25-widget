@@ -178,7 +178,7 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
-        set("quickBtn", if (prefs.getBoolean("bottomButton", true)) "On" else "Off")
+        set("quickBtn", if (prefs.getBoolean("orangeButton", true)) "On" else "Off")
         set("lastKey", "Last button the app saw: " + (prefs.getString("lastKey", null) ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
@@ -365,10 +365,11 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
-        col.addView(row("quickBtn", "Bottom button: start · lap · double-press finish") {
-            prefs.edit().putBoolean("bottomButton", !prefs.getBoolean("bottomButton", true)).apply()
+        col.addView(row("quickBtn", "Orange button: start · lap · double-press finish") {
+            prefs.edit().putBoolean("orangeButton", !prefs.getBoolean("orangeButton", true)).apply()
         }.apply {
-            addView(label("Press once on the Running screen to start. During a run: press once for a lap (next step in a workout), " +
+            addView(label("Set it up once: watch Settings → Advanced features → Customize buttons → Quick button → open app → Running. " +
+                "Then press once on the Running screen to start; during a run press once for a lap (next step in a workout), " +
                 "press twice quickly to finish and save.", C.MUTED, 9f))
             addView(label("", C.DIM, 9f).also { startValues["lastKey"] = it })
         })
@@ -616,35 +617,50 @@ class RunActivity : Activity() {
     @Deprecated("Deprecated in Java")
     /** Back gesture (swipe): navigation only — never starts or ends a run, never leaves mid-run. */
     override fun onBackPressed() {
-        if (screen == Screen.LIVE && !wrongDevice) return
+        if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.SUMMARY) { finish(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
-    /**
-     * The physical bottom button, caught as a raw key press before the system turns it into
-     * "back" (newer Wear OS skips onBackPressed for buttons, which is why it used to leave the app).
-     */
+    /** Notes which buttons reach the app (shown in Settings); "stem" keys act like the orange button. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (wrongDevice) return super.dispatchKeyEvent(event)
-        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            prefs.edit().putString("lastKey", android.view.KeyEvent.keyCodeToString(event.keyCode)).apply()   // shown in Settings
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
+            prefs.edit().putString("lastKey", android.view.KeyEvent.keyCodeToString(event.keyCode)).apply()
+        val stem = event.keyCode == android.view.KeyEvent.KEYCODE_STEM_PRIMARY || event.keyCode == android.view.KeyEvent.KEYCODE_STEM_1
+        if (stem && prefs.getBoolean("orangeButton", true)) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) orangeButton(visible = true)
+            return true
         }
-        val isButton = event.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
-            event.keyCode == android.view.KeyEvent.KEYCODE_STEM_PRIMARY ||
-            event.keyCode == android.view.KeyEvent.KEYCODE_STEM_1
-        if (!isButton || !prefs.getBoolean("bottomButton", true)) return super.dispatchKeyEvent(event)
-        // Only handle it where the button has a run job; elsewhere it's a normal back.
-        val runControl = screen == Screen.LIVE ||
-            (screen == Screen.START && !Run.isActive && !showSettings && !overlayOpen && editorRotary == null)
-        if (!runControl) return super.dispatchKeyEvent(event)
-        if (event.action == android.view.KeyEvent.ACTION_UP && !event.isCanceled) {
-            if (screen == Screen.LIVE) backButton()
-            else { pulse(longArrayOf(0, 400)); startRun() }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * The orange Quick button, set to open Running (watch Settings → Advanced features → Customize
+     * buttons → Quick button → Running). Each press while Running is open arrives as a new launch.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (wrongDevice || intent.action != Intent.ACTION_MAIN || !prefs.getBoolean("orangeButton", true)) return
+        prefs.edit().putString("lastKey", "Orange button (Running opened)").apply()
+        orangeButton(visible = wasVisible)
+    }
+
+    /** Press = start (on the Running screen) or lap during a run; double press = finish and save. */
+    private fun orangeButton(visible: Boolean) {
+        when (screen) {
+            Screen.START -> {
+                // Opening Running from somewhere else just opens it; a press while it's showing starts the run.
+                if (Run.isActive || !visible) return
+                editorRotary = null; overlayOpen = false; showSettings = false
+                pulse(longArrayOf(0, 400)); startRun()
+            }
+            Screen.LIVE -> backButton()   // lap, or finish on a double press
+            Screen.SUMMARY -> finish()
         }
-        return true   // consume both down and up so the system doesn't also go back
     }
 
     // ---------------------------------------------------------------- live pages
@@ -736,7 +752,7 @@ class RunActivity : Activity() {
     // ---------------------------------------------------------------- watch buttons
 
     /**
-     * Bottom button during a run: one press = lap (or next workout step), a quick double press =
+     * Orange button during a run: one press = lap (or next workout step), a quick double press =
      * finish and save. A single press waits ~half a second to make sure it isn't a double.
      */
     private var pendingLap: Runnable? = null
@@ -758,7 +774,7 @@ class RunActivity : Activity() {
             else { Run.lap(); flash("LAP ${Run.laps.size}") }
         }
         pendingLap = lap
-        handler.postDelayed(lap, 450)
+        handler.postDelayed(lap, 700)   // button presses arrive as app launches, so allow a bit longer
     }
 
     private fun pulse(p: LongArray) {
@@ -1086,7 +1102,7 @@ class RunActivity : Activity() {
             }
 
         if (confirmingFinish) {
-            controlsBox.addView(label("Tip: double-press the bottom button to finish", C.MUTED, 10f))
+            controlsBox.addView(label("Tip: double-press the orange button to finish", C.MUTED, 10f))
             controlsBox.addView(button("SAVE RUN", C.OK) { finishRun() })
             controlsBox.addView(button("Discard", C.STOP, Color.WHITE) {
                 Run.discard(this); RunService.stop(this); finish()
