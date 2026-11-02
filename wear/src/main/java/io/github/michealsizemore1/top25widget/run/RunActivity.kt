@@ -110,7 +110,7 @@ class RunActivity : Activity() {
         RunSync.pullLatest(this) {
             if (!wrongDevice && screen == Screen.START && !overlayOpen && editorRotary == null) {
                 if (!Run.isActive && Run.workout == null) WatchWorkouts.today(this)?.let { Run.chooseWorkout(it) }
-                if (!Run.isActive) { RunSync.loadSettings(this); loadScreens() }
+                if (!Run.isActive) { RunSync.loadSettings(this); loadScreens(); RunSync.loadTrail(this) }
                 startBuilt = false; render()
             }
         }
@@ -121,7 +121,7 @@ class RunActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (wrongDevice) return
-        if (!Run.isActive) RunSync.loadSettings(this)
+        if (!Run.isActive) { RunSync.loadSettings(this); RunSync.loadTrail(this) }
         loadScreens()
         Run.listen(onRunChanged)
         // Coming back from History (which stopped the idle sensors): turn them on again.
@@ -547,7 +547,8 @@ class RunActivity : Activity() {
     private fun showTrails(): Unit = overlay { col ->
         col.addView(label("Trails near me", Color.WHITE, 18f, true))
         if (Run.nav != null) col.addView(card("No trail", "Clear ${Run.nav?.trail?.name}", C.STOP) {
-            Run.chooseTrail(null, false); overlayOpen = false; startBuilt = false; renderStart()
+            Run.chooseTrail(null, false); io.github.michealsizemore1.top25widget.TrailSync.choose(this, null, false, "watch")
+            overlayOpen = false; startBuilt = false; renderStart()
         })
         val cached = trailCache?.takeIf { System.currentTimeMillis() - it.first < 30 * 60_000 }?.second
         if (cached == null) {
@@ -625,7 +626,7 @@ class RunActivity : Activity() {
         } else showProfile()
         fun choose(outAndBack: Boolean) {
             Run.chooseTrail(t, outAndBack)
-            RunService.instance?.let { /* GPS turns on with the trail */ }
+            io.github.michealsizemore1.top25widget.TrailSync.choose(this, t, outAndBack, "watch")   // shows on the phone too
             overlayOpen = false; startBuilt = false; renderStart()
             flash("Trail set — press Start")
         }
@@ -1338,7 +1339,9 @@ class RunActivity : Activity() {
     // ---------------------------------------------------------------- summary
 
     private fun finishRun() {
+        val usedTrail = Run.nav != null
         val json = Run.finish(this)
+        if (usedTrail) io.github.michealsizemore1.top25widget.TrailSync.choose(this, null, false, "watch")
         Speaker.finished(json)
         RunSync.pushAll(this)
         RunService.stop(this)

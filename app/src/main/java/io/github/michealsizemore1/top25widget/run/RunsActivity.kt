@@ -162,6 +162,14 @@ class RunsActivity : Activity() {
                     startActivity(Intent(ctx, WorkoutsActivity::class.java))
                 })
             })
+            // Trail chosen for the next run (same on the watch).
+            io.github.michealsizemore1.top25widget.TrailSync.current(ctx)?.let { (t, oab) ->
+                addView(RunUi.text(ctx, "Trail: ${t.name} · " + String.format(java.util.Locale.US, "%.1f mi", t.lengthM / 1609.344 * (if (oab) 2 else 1)) +
+                    (if (oab) " out & back" else ""), 0xFF46C46E.toInt(), 13f, true).apply { setPadding(0, RunUi.dp(ctx, 8), 0, 0) })
+            }
+            addView(RunUi.button(ctx, "Trails near me", 0xFF46C46E.toInt()) {
+                startActivity(Intent(ctx, TrailsActivity::class.java))
+            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = RunUi.dp(ctx, 10) } })
         })
 
         col.addView(RunUi.section(this, "RUNS FROM YOUR WATCH"))

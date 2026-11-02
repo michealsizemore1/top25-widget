@@ -80,6 +80,9 @@ object RunSync {
                     if (io.github.michealsizemore1.top25widget.SettingsSync.apply(app, "run", "watch", it)) loadSettings(app)
                 }
                 rs.release()
+                val tr = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*" + io.github.michealsizemore1.top25widget.TrailSync.PATH)))
+                tr.map { DataMapItem.fromDataItem(it).dataMap }.forEach { io.github.michealsizemore1.top25widget.TrailSync.apply(app, "watch", it) }
+                tr.release()
                 val st = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*/phonestatus")))
                 st.map { DataMapItem.fromDataItem(it).dataMap }.firstOrNull()?.let { m ->
                     app.getSharedPreferences("phonestatus", 0).edit()
@@ -105,6 +108,14 @@ object RunSync {
                 com.google.android.gms.tasks.Tasks.await(Wearable.getDataClient(app).putDataItem(req))
             } catch (e: Exception) { }
         }.start()
+    }
+
+    /** Sets the run's trail to the chosen one (shared with the phone). */
+    fun loadTrail(ctx: Context) {
+        val cur = io.github.michealsizemore1.top25widget.TrailSync.current(ctx)
+        if (cur == null) { if (Run.nav != null) Run.chooseTrail(null, false); return }
+        val (t, oab) = cur
+        if (Run.nav?.trail?.id != t.id || Run.nav?.outAndBack != oab) Run.chooseTrail(t, oab)
     }
 
     /** Puts the saved settings into the live run state. */
@@ -176,6 +187,11 @@ object WatchWorkouts {
 class RunSettingsListener : WearableListenerService() {
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
+            // Trail chosen on the phone.
+            if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == io.github.michealsizemore1.top25widget.TrailSync.PATH) {
+                if (io.github.michealsizemore1.top25widget.TrailSync.apply(this, "watch", DataMapItem.fromDataItem(e.dataItem).dataMap) && !Run.isActive) RunSync.loadTrail(this)
+                return@forEach
+            }
             // Settings changed on the phone.
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == io.github.michealsizemore1.top25widget.SettingsSync.PATH) {
                 if (io.github.michealsizemore1.top25widget.SettingsSync.apply(this, "run", "watch", DataMapItem.fromDataItem(e.dataItem).dataMap)) {

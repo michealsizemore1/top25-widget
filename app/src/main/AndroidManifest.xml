@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -52,6 +54,11 @@
             android:windowSoftInputMode="adjustResize"
             android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
         <activity
+            android:name=".run.TrailsActivity"
+            android:exported="false"
+            android:label="Trails"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
+        <activity
             android:name=".run.ScreensActivity"
             android:exported="false"
             android:label="Watch screens"
@@ -82,6 +89,7 @@
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/run/" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/deleted/" />
                 <data android:scheme="wear" android:host="*" android:path="/runsettings" />
+                <data android:scheme="wear" android:host="*" android:path="/trail" />
             </intent-filter>
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />

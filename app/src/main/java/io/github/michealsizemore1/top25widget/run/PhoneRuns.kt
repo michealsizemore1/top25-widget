@@ -114,6 +114,9 @@ class RunReceiverService : WearableListenerService() {
     }
 
     override fun onDataChanged(events: DataEventBuffer) {
+        // Trail chosen on the watch.
+        events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == io.github.michealsizemore1.top25widget.TrailSync.PATH }
+            .forEach { io.github.michealsizemore1.top25widget.TrailSync.apply(this, "phone", DataMapItem.fromDataItem(it.dataItem).dataMap) }
         // Settings changed on the watch.
         events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == io.github.michealsizemore1.top25widget.SettingsSync.PATH }
             .forEach { io.github.michealsizemore1.top25widget.SettingsSync.apply(this, "runsettings", "phone", DataMapItem.fromDataItem(it.dataItem).dataMap) }
