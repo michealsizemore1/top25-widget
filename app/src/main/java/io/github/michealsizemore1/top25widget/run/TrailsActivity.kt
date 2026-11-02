@@ -62,6 +62,8 @@ class TrailsActivity : Activity() {
     private var lastKey = ""
     override fun onResume() {
         super.onResume()
+        // Courses saved on the watch while this screen was away.
+        Thread { if (io.github.michealsizemore1.top25widget.Courses.pullAll(this, "phone")) runOnUiThread { if (open == null) render() } }.start()
         val key = "${TrailSearch.area(this, PREFS)?.encode()}|${TrailSearch.radiusMi(this, PREFS)}"
         if (lastKey.isNotEmpty() && key != lastKey) start() else if (open == null && trails != null) render()
         lastKey = key
@@ -94,7 +96,10 @@ class TrailsActivity : Activity() {
         }
     }
 
+    private var center: DoubleArray? = null
+
     private fun search(lat: Double, lon: Double) {
+        center = doubleArrayOf(lat, lon)
         val mi = TrailSearch.radiusMi(this, PREFS)
         status = "Looking for trails within $mi mi" + (if (from == "you") "…" else " of $from…"); render()
         Thread {
@@ -125,6 +130,20 @@ class TrailsActivity : Activity() {
                         setOnClickListener { TrailSync.choose(ctx, null, false, "phone"); render() }
                     })
                 })
+            }
+            // Saved courses (same list on the watch).
+            val saved = io.github.michealsizemore1.top25widget.Courses.list(this)
+            if (saved.isNotEmpty()) {
+                col.addView(RunUi.section(this, "SAVED COURSES"))
+                saved.forEach { c ->
+                    center?.let { me -> c.distToStartM = c.points.minOf { io.github.michealsizemore1.top25widget.Geo.dist(it, me) } }
+                    col.addView(RunUi.card(this).apply {
+                        addView(RunUi.text(ctx, "★ " + c.name, Color.WHITE, 17f, true))
+                        addView(RunUi.text(ctx, String.format(Locale.US, "%.1f mi %s", c.lengthM / 1609.344, if (c.loop) "loop" else "one way") +
+                            (if (center != null) " · " + distText(c.distToStartM) + (if (from == "you") " away" else " from $from") else ""), RunUi.MUTED, 13f))
+                        setOnClickListener { open = c; render() }
+                    })
+                }
             }
             // Where / how far / sort — the same settings as on the watch.
             val place = TrailSearch.area(this, PREFS)
@@ -272,12 +291,34 @@ class TrailsActivity : Activity() {
             col.addView(RunUi.button(this, String.format(Locale.US, "One way (%.2f mi) — send to watch", mi), RunUi.CARD, Color.WHITE) { send(false) }
                 .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
         }
-        col.addView(RunUi.text(this, "Open in Maps for directions to the trailhead ›", RunUi.ACCENT, 14f, true).apply {
-            gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0)
+        // Google Maps to the start.
+        col.addView(RunUi.section(this, "GET TO THE START"))
+        val s0 = t.points.first()
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(RunUi.button(ctx, "Drive there", RunUi.CARD, Color.WHITE) { io.github.michealsizemore1.top25widget.Directions.open(ctx, s0[0], s0[1], "d") }
+                .apply { layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f) })
+            addView(RunUi.button(ctx, "Walk / run there", RunUi.CARD, Color.WHITE) { io.github.michealsizemore1.top25widget.Directions.open(ctx, s0[0], s0[1], "w") }
+                .apply { layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { leftMargin = dp(8) } })
+        })
+        col.addView(RunUi.text(this, "Opens Google Maps with directions to the trail start. On the watch: open the trail and tap Directions to start.",
+            RunUi.DIM, 12f).apply { setPadding(dp(4), dp(6), dp(4), 0) })
+        // Save / remove.
+        val isSaved = io.github.michealsizemore1.top25widget.Courses.isSaved(this, t.id)
+        col.addView(RunUi.button(this, if (isSaved) "★ Saved course — tap to remove" else "☆ Save course", if (isSaved) RunUi.CARD else 0xFFD4E635.toInt(),
+            if (isSaved) 0xFFD4E635.toInt() else Color.BLACK) {
+            if (isSaved) io.github.michealsizemore1.top25widget.Courses.remove(ctx, t.id, "phone") else io.github.michealsizemore1.top25widget.Courses.save(ctx, t, "phone")
+            Toast.makeText(ctx, if (isSaved) "Removed from saved courses" else "Saved — on your watch too", Toast.LENGTH_SHORT).show()
+            render()
+        }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) } })
+        if (isSaved) col.addView(RunUi.text(this, "Rename", RunUi.ACCENT, 14f, true).apply {
+            gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0)
             setOnClickListener {
-                val s = t.points.first()
-                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse("geo:${s[0]},${s[1]}?q=${s[0]},${s[1]}(${android.net.Uri.encode(t.name)})")))
+                val input = EditText(ctx).apply { setText(t.name); setSingleLine() }
+                AlertDialog.Builder(ctx).setTitle("Course name").setView(input).setPositiveButton("Save") { _, _ ->
+                    val n = input.text.toString().trim()
+                    if (n.isNotEmpty()) { io.github.michealsizemore1.top25widget.Courses.rename(ctx, t, n, "phone"); open = t.copy(name = n).also { it.elevations = t.elevations; it.distToStartM = t.distToStartM }; render() }
+                }.setNegativeButton("Cancel", null).show()
             }
         })
     }

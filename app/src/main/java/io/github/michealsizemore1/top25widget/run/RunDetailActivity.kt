@@ -194,6 +194,21 @@ class RunDetailActivity : Activity() {
         run.optJSONArray("track")?.takeIf { it.length() > 5 }?.let { track ->
             col.addView(RunUi.section(this, "ROUTE"))
             col.addView(RunUi.card(this).apply { addView(RunUi.route(ctx, track)) })
+            val courseId = "run${run.optLong("start")}"
+            col.addView(RunUi.text(this, if (io.github.michealsizemore1.top25widget.Courses.isSaved(this, courseId)) "★ Saved as a course" else "☆ Save this route as a course",
+                0xFFD4E635.toInt(), 14f, true).apply {
+                gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0)
+                setOnClickListener {
+                    if (io.github.michealsizemore1.top25widget.Courses.isSaved(ctx, courseId)) return@setOnClickListener
+                    val input = android.widget.EditText(ctx).apply { setText(PhoneRuns.title(run)); setSingleLine() }
+                    AlertDialog.Builder(ctx).setTitle("Name this course").setView(input).setPositiveButton("Save") { _, _ ->
+                        val c = io.github.michealsizemore1.top25widget.Courses.fromRun(run, input.text.toString().trim().ifBlank { PhoneRuns.title(run) })
+                        if (c == null) Toast.makeText(ctx, "Not enough GPS points for a course", Toast.LENGTH_SHORT).show()
+                        else { io.github.michealsizemore1.top25widget.Courses.save(ctx, c, "phone"); text = "★ Saved as a course"
+                            Toast.makeText(ctx, "Saved — find it under Trails, on the phone and watch", Toast.LENGTH_LONG).show() }
+                    }.setNegativeButton("Cancel", null).show()
+                }
+            })
         }
 
         col.addView(RunUi.text(this, "Share run file (TCX)", RunUi.ACCENT, 14f, true).apply {

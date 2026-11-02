@@ -371,6 +371,7 @@ class RunActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
             setOnClickListener { onClick() }
         }
+        Run.nav?.trail?.let { t -> col.addView(navButton("Directions to trail start", C.CARD, Color.WHITE) { showDirections(t) }) }
         col.addView(navButton("Trails near me", 0xFF46C46E.toInt(), Color.BLACK) { showTrails() })
         col.addView(navButton("Workouts & Plan", C.ACCENT, Color.BLACK) { showWorkoutPicker() })
         col.addView(navButton("History", C.CARD, Color.WHITE) { startActivity(Intent(this, RunHistoryActivity::class.java)) })
@@ -556,6 +557,8 @@ class RunActivity : Activity() {
         if (key != trailKey) { trailKey = key; trailCache = null; trailStatus = ""; trailShowAll = false }
         val from = place?.label?.substringBefore(",")
         col.addView(label(if (from == null) "Trails near me" else "Trails · $from", Color.WHITE, 18f, true))
+        val saved = io.github.michealsizemore1.top25widget.Courses.list(this)
+        if (saved.isNotEmpty()) col.addView(card("★ Saved courses (${saved.size})", saved.take(2).joinToString(", ") { it.name }, 0xFFD4E635.toInt()) { showCourses() })
         col.addView(card("Where: " + (from ?: "Near me"), "Tap to change", C.ACCENT) { showTrailWhere() })
         col.addView(card("Within $radius mi · " + (if (longest) "longest first" else "nearest first"), "Tap to change") { showTrailRange() })
         if (Run.nav != null) col.addView(card("No trail", "Clear ${Run.nav?.trail?.name}", C.STOP) {
@@ -579,6 +582,50 @@ class RunActivity : Activity() {
         }
         if (!trailShowAll && sorted.size > 25) col.addView(card("Show all ${sorted.size}", "", C.ACCENT) { trailShowAll = true; showTrails() })
         col.addView(card("Refresh", "Search again from here", C.ACCENT) { trailCache = null; trailStatus = ""; showTrails() })
+    }
+
+    /** Saved courses (same list as the phone). */
+    private fun showCourses(): Unit = overlay { col ->
+        col.addView(label("Saved courses", Color.WHITE, 18f, true))
+        val here = if (Run.gpsFix && System.currentTimeMillis() - Run.gpsLastUpdate < 10 * 60_000) doubleArrayOf(Run.gpsLat, Run.gpsLon) else lastKnown()
+        val list = io.github.michealsizemore1.top25widget.Courses.list(this)
+        if (list.isEmpty()) col.addView(label("None yet. Open a trail and tap Save course, or save a run's route on the phone.", C.MUTED, 11f))
+        list.forEach { c ->
+            here?.let { me -> c.distToStartM = c.points.minOf { io.github.michealsizemore1.top25widget.Geo.dist(it, me) } }
+            col.addView(card(c.name, String.format(java.util.Locale.US, "%.1f mi %s", c.lengthM / 1609.344, if (c.loop) "loop" else "one way") +
+                (if (here != null) " · " + distText(c.distToStartM) + " away" else "")) { showTrail(c) })
+        }
+        col.addView(card("Back", "", C.ACCENT) { showTrails() })
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun lastKnown(): DoubleArray? = try {
+        val lm = getSystemService(android.location.LocationManager::class.java)
+        listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER, android.location.LocationManager.FUSED_PROVIDER)
+            .mapNotNull { try { lm.getLastKnownLocation(it) } catch (e: Exception) { null } }
+            .maxByOrNull { it.time }?.let { doubleArrayOf(it.latitude, it.longitude) }
+    } catch (e: Exception) { null }
+
+    /** Google Maps directions to the trail start — on the watch, or on the phone if the watch has no Maps. */
+    private fun showDirections(t: io.github.michealsizemore1.top25widget.Trail): Unit = overlay { col ->
+        val s0 = t.points.first()
+        col.addView(label("Directions to start", Color.WHITE, 18f, true))
+        col.addView(label(t.name, C.MUTED, 11f))
+        fun go(mode: String) {
+            if (!io.github.michealsizemore1.top25widget.Directions.open(this, s0[0], s0[1], mode)) {
+                RunSync.tellPhone(this, "/cmd/directions", "${s0[0]},${s0[1]},$mode,${t.name}".toByteArray()) { ok ->
+                    runOnUiThread { flash(if (ok) "Sent to your phone" else "No Google Maps here or phone") }
+                }
+            }
+        }
+        col.addView(card("Walk / run there", "Google Maps on the watch", C.ACCENT) { go("w") })
+        col.addView(card("Drive there", "Google Maps on the watch", C.ACCENT) { go("d") })
+        col.addView(card("Send to phone", "Directions notification on the phone") {
+            RunSync.tellPhone(this, "/cmd/directions", "${s0[0]},${s0[1]},d,${t.name}".toByteArray()) { ok ->
+                runOnUiThread { flash(if (ok) "Sent to your phone" else "Phone not reachable") }
+            }
+        })
+        col.addView(card("Back", "", C.ACCENT) { showTrail(t) })
     }
 
     /** Where to search: near me, a recent place, or type/say a new one. */
@@ -703,7 +750,7 @@ class RunActivity : Activity() {
         if (t.elevations != null) facts += "${(t.climbM * 3.28084).toInt()} ft climb"
         facts += t.difficulty
         if (t.surface.isNotBlank()) facts += t.surface
-        facts += distText(t.distToStartM) + " away"
+        if (t.distToStartM > 0) facts += distText(t.distToStartM) + " away"
         col.addView(label(facts.joinToString(" · "), C.MUTED, 11f))
         val w = resources.displayMetrics.widthPixels * 3 / 4
         val profile = android.widget.ImageView(this)
@@ -728,7 +775,13 @@ class RunActivity : Activity() {
             col.addView(card("Out & back", String.format(java.util.Locale.US, "%.2f mi · turn around at the end", mi * 2), C.ACCENT) { choose(true) })
             col.addView(card("One way", String.format(java.util.Locale.US, "%.2f mi", mi), C.ACCENT) { choose(false) })
         }
-        col.addView(card("Back", "", C.ACCENT) { showTrails() })
+        col.addView(card("Directions to start", "Google Maps", Color.WHITE) { showDirections(t) })
+        val isSaved = io.github.michealsizemore1.top25widget.Courses.isSaved(this, t.id)
+        col.addView(card(if (isSaved) "★ Saved course" else "☆ Save course", if (isSaved) "Tap to remove" else "Also saves on the phone", 0xFFD4E635.toInt()) {
+            if (isSaved) io.github.michealsizemore1.top25widget.Courses.remove(this, t.id, "watch") else io.github.michealsizemore1.top25widget.Courses.save(this, t, "watch")
+            flash(if (isSaved) "Removed" else "Saved"); showTrail(t)
+        })
+        col.addView(card("Back", "", C.ACCENT) { if (isSaved || io.github.michealsizemore1.top25widget.Courses.isSaved(this, t.id)) showCourses() else showTrails() })
     }
 
     // ---------------------------------------------------------------- audio prompts settings

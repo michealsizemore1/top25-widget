@@ -232,6 +232,17 @@ object RunViews {
             })
         }
 
+        json.optJSONArray("track")?.takeIf { it.length() >= 10 }?.let {
+            val id = "run${json.optLong("start")}"
+            col.addView(label(ctx, if (io.github.michealsizemore1.top25widget.Courses.isSaved(ctx, id)) "★ Saved as course" else "☆ Save route as course", 0xFFD4E635.toInt(), 13f, true).apply {
+                setPadding(0, dp(ctx, 12), 0, 0)
+                setOnClickListener {
+                    if (io.github.michealsizemore1.top25widget.Courses.isSaved(ctx, id)) return@setOnClickListener
+                    val c = io.github.michealsizemore1.top25widget.Courses.fromRun(json, title(json))
+                    if (c == null) text = "Not enough GPS points" else { io.github.michealsizemore1.top25widget.Courses.save(ctx, c, "watch"); text = "★ Saved as course" }
+                }
+            })
+        }
         col.addView(label(ctx, "Done", Color.BLACK, 16f, true).apply {
             background = GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 24).toFloat() }
             setPadding(0, dp(ctx, 10), 0, dp(ctx, 10))

@@ -117,6 +117,10 @@ class RunReceiverService : WearableListenerService() {
         // Trail chosen on the watch.
         events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == io.github.michealsizemore1.top25widget.TrailSync.PATH }
             .forEach { io.github.michealsizemore1.top25widget.TrailSync.apply(this, "phone", DataMapItem.fromDataItem(it.dataItem).dataMap) }
+        // Course saved/removed on the watch.
+        events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path?.startsWith(io.github.michealsizemore1.top25widget.Courses.PREFIX) == true }
+            .map { it.dataItem.freeze() }
+            .forEach { io.github.michealsizemore1.top25widget.Courses.apply(this, "phone", it.uri.path ?: "", DataMapItem.fromDataItem(it).dataMap) }
         // Settings changed on the watch.
         events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == io.github.michealsizemore1.top25widget.SettingsSync.PATH }
             .forEach { io.github.michealsizemore1.top25widget.SettingsSync.apply(this, "runsettings", "phone", DataMapItem.fromDataItem(it.dataItem).dataMap) }

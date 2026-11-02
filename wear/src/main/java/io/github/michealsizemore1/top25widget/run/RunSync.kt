@@ -83,6 +83,7 @@ object RunSync {
                 val tr = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*" + io.github.michealsizemore1.top25widget.TrailSync.PATH)))
                 tr.map { DataMapItem.fromDataItem(it).dataMap }.forEach { io.github.michealsizemore1.top25widget.TrailSync.apply(app, "watch", it) }
                 tr.release()
+                io.github.michealsizemore1.top25widget.Courses.pullAll(app, "watch")
                 val st = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*/phonestatus")))
                 st.map { DataMapItem.fromDataItem(it).dataMap }.firstOrNull()?.let { m ->
                     app.getSharedPreferences("phonestatus", 0).edit()
@@ -187,6 +188,11 @@ object WatchWorkouts {
 class RunSettingsListener : WearableListenerService() {
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
+            // Course saved/removed on the phone.
+            if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path?.startsWith(io.github.michealsizemore1.top25widget.Courses.PREFIX) == true) {
+                io.github.michealsizemore1.top25widget.Courses.apply(this, "watch", e.dataItem.uri.path ?: "", DataMapItem.fromDataItem(e.dataItem.freeze()).dataMap)
+                return@forEach
+            }
             // Trail chosen on the phone.
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == io.github.michealsizemore1.top25widget.TrailSync.PATH) {
                 if (io.github.michealsizemore1.top25widget.TrailSync.apply(this, "watch", DataMapItem.fromDataItem(e.dataItem).dataMap) && !Run.isActive) RunSync.loadTrail(this)

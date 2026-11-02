@@ -47,6 +47,21 @@ object PhoneStatus {
                     if (n > 0) "Tap to open the Command Center and add them" else "All runs are already there",
                     Intent(ctx, RunsActivity::class.java).putExtra("sendCc", n > 0))
             }
+            // Watch asked for directions to a trail start (no Google Maps on the watch).
+            "/cmd/directions" -> {
+                val p = String(data).split(",")
+                if (p.size >= 3) {
+                    val nm = ctx.getSystemService(NotificationManager::class.java)
+                    nm.createNotificationChannel(android.app.NotificationChannel("runstatus", "Running", NotificationManager.IMPORTANCE_HIGH))
+                    val nav = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("google.navigation:q=${p[0]},${p[1]}&mode=${p[2]}"))
+                        .setPackage("com.google.android.apps.maps")
+                    val pi = android.app.PendingIntent.getActivity(ctx, 904, nav, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+                    val n = android.app.Notification.Builder(ctx, "runstatus").setSmallIcon(io.github.michealsizemore1.top25widget.R.drawable.ic_stat_run)
+                        .setContentTitle("Directions to " + (p.getOrNull(3) ?: "trail start")).setContentText("Tap to open Google Maps")
+                        .setContentIntent(pi).setAutoCancel(true).build()
+                    try { nm.notify(904, n) } catch (e: SecurityException) { }
+                }
+            }
             "/cmd/stryd" -> {
                 if (!StrydCloud.connected(ctx)) {
                     notify(ctx, 903, "Stryd isn't connected", "Tap to sign in to Stryd in Run settings",
