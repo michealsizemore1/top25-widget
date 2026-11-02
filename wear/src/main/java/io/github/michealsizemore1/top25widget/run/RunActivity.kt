@@ -70,6 +70,7 @@ class RunActivity : Activity() {
         builtScreen = -1
     }
     private var lastRotary = 0L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("run", 0) }
 
     private val onRunChanged: () -> Unit = { runOnUiThread { render() } }
@@ -121,8 +122,14 @@ class RunActivity : Activity() {
     }
     override fun onPause() { super.onPause(); if (!wrongDevice) Run.unlisten(onRunChanged) }
 
+    /** True while the Running screen is on the display (not behind another app or the watch face). */
+    private var wasVisible = false
+    override fun onStart() { super.onStart(); handler.postDelayed({ wasVisible = true }, 600) }
+
     override fun onStop() {
         super.onStop()
+        wasVisible = false
+        handler.removeCallbacksAndMessages(null)
         if (wrongDevice) return
         // Leaving the start screen without running: turn the sensors back off.
         if (!Run.isActive && screen != Screen.LIVE && !isChangingConfigurations) RunService.stop(this)
@@ -171,6 +178,7 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
+        set("quickBtn", if (prefs.getBoolean("quickButton", true)) "On" else "Off")
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
@@ -356,6 +364,12 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
+        col.addView(row("quickBtn", "Orange Quick button: start / pause") {
+            prefs.edit().putBoolean("quickButton", !prefs.getBoolean("quickButton", true)).apply()
+        }.apply {
+            addView(label("Set it up once: watch Settings → Advanced features → Customize buttons → " +
+                "Quick button → Open app → Running. Bottom button: lap · when paused, finish · then save.", C.MUTED, 9f))
+        })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
             prefs.edit().putString("source", Run.source.name.lowercase()).apply()
@@ -599,6 +613,8 @@ class RunActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // During a run the bottom button is a run control, never "leave the app".
+        if (screen == Screen.LIVE && !wrongDevice) { backButton(); return }
         // Back (or swipe) from a number editor returns to the start screen without saving.
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
@@ -690,6 +706,64 @@ class RunActivity : Activity() {
         root.isFocusableInTouchMode = true
         root.requestFocus()
     }
+
+    // ---------------------------------------------------------------- watch buttons
+
+    /**
+     * The Galaxy Watch Ultra's orange Quick button, when set to open Running (watch Settings →
+     * Advanced features → Customize buttons → Quick button → Running). Pressing it while Running is
+     * open arrives here as a new launch. Some watches send it as a "stem" key instead.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (wrongDevice) return
+        // Only when the Running screen was already showing — reopening the app from the app list
+        // or another screen just brings it back.
+        if (intent.action == Intent.ACTION_MAIN && prefs.getBoolean("quickButton", true) && wasVisible) quickButton()
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (!wrongDevice && event.keyCode in listOf(android.view.KeyEvent.KEYCODE_STEM_1, android.view.KeyEvent.KEYCODE_STEM_2,
+                android.view.KeyEvent.KEYCODE_STEM_3, android.view.KeyEvent.KEYCODE_STEM_PRIMARY)) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) quickButton()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** Orange button: start → pause ⇄ resume (and resume from the Finish screen). */
+    private fun quickButton() {
+        when {
+            screen == Screen.START && !Run.isActive -> {
+                editorRotary = null; overlayOpen = false; showSettings = false
+                pulse(longArrayOf(0, 400)); startRun()
+            }
+            screen == Screen.LIVE && (confirmingFinish || Run.state != Run.State.RUNNING) -> {
+                confirmingFinish = false; Run.resume(); pulse(longArrayOf(0, 120, 80, 120))
+                flash("RESUMED"); renderLive()
+            }
+            screen == Screen.LIVE -> { Run.pause(); pulse(longArrayOf(0, 500)); flash("PAUSED"); renderLive() }
+        }
+    }
+
+    /** Bottom button during a run: lap (or next step) → when paused, Finish… → on Finish, save. */
+    private fun backButton() {
+        when {
+            confirmingFinish -> { pulse(longArrayOf(0, 200, 100, 200, 100, 600)); finishRun() }
+            Run.state != Run.State.RUNNING -> {
+                confirmingFinish = true; page = 0; pulse(longArrayOf(0, 250, 100, 250)); renderLive()
+            }
+            Run.hasWorkout && !Run.workoutDone -> { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
+            else -> { Run.lap(); flash("LAP ${Run.laps.size}") }
+        }
+    }
+
+    private fun pulse(p: LongArray) {
+        try { getSystemService(android.os.Vibrator::class.java)?.vibrate(android.os.VibrationEffect.createWaveform(p, -1)) } catch (e: Exception) { }
+    }
+
+    private fun flash(text: String) = android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_SHORT).show()
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (wrongDevice) return super.dispatchTouchEvent(ev)
@@ -1010,6 +1084,7 @@ class RunActivity : Activity() {
             }
 
         if (confirmingFinish) {
+            controlsBox.addView(label("Bottom button = save · Orange = resume", C.MUTED, 10f))
             controlsBox.addView(button("SAVE RUN", C.OK) { finishRun() })
             controlsBox.addView(button("Discard", C.STOP, Color.WHITE) {
                 Run.discard(this); RunService.stop(this); finish()
