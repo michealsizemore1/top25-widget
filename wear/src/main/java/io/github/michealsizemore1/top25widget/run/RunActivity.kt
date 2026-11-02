@@ -120,8 +120,20 @@ class RunActivity : Activity() {
         if (!RunService.running && screen != Screen.SUMMARY) RunService.start(this)
         render()
     }
-    override fun onPause() { super.onPause(); if (!wrongDevice) Run.unlisten(onRunChanged) }
+    override fun onPause() {
+        if (isOnScreen || hasWindowFocus()) lastShownAt = System.currentTimeMillis()
+        isOnScreen = false
+        super.onPause()
+        if (!wrongDevice) Run.unlisten(onRunChanged)
+    }
 
+    /** When the Running screen was last on the display, for telling a button press from opening the app. */
+    private var lastShownAt = 0L
+    private var isOnScreen = false
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) isOnScreen = true else { isOnScreen = false; lastShownAt = System.currentTimeMillis() }
+    }
     /** True while the Running screen is on the display (not behind another app or the watch face). */
     private var wasVisible = false
     override fun onStart() { super.onStart(); handler.postDelayed({ wasVisible = true }, 600) }
@@ -646,7 +658,10 @@ class RunActivity : Activity() {
         setIntent(intent)
         if (wrongDevice || intent.action != Intent.ACTION_MAIN || !prefs.getBoolean("orangeButton", true)) return
         prefs.edit().putString("lastKey", "Orange button (Running opened)").apply()
-        orangeButton(visible = wasVisible)
+        // "Showing" = on screen now or within the last few seconds (Samsung briefly hides the app while
+        // it handles the button press, so the app is never "on screen" at the exact moment it arrives).
+        val now = System.currentTimeMillis()
+        orangeButton(visible = isOnScreen || now - lastShownAt < 3000)
     }
 
     /** Press = start (on the Running screen) or lap during a run; double press = finish and save. */
