@@ -198,8 +198,7 @@ class RunActivity : Activity() {
             startValues[key]?.apply { this.text = text; setTextColor(color) }
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
-        set("quickBtn", if (prefs.getBoolean("orangeButton", true)) "On" else "Off")
-        set("lastKey", "Button log:\n" + (prefs.getString("buttonLog", null) ?: "none yet"), C.DIM)
+        set("quickBtn", if (prefs.getBoolean("gestures", true)) "On" else "Off")
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
         startValues["workoutOutline"]?.apply {
@@ -385,13 +384,11 @@ class RunActivity : Activity() {
         }
 
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
-        col.addView(row("quickBtn", "Orange button: start · lap · double-press finish") {
-            prefs.edit().putBoolean("orangeButton", !prefs.getBoolean("orangeButton", true)).apply()
+        col.addView(row("quickBtn", "Run gestures: double-tap = lap · hold = finish") {
+            prefs.edit().putBoolean("gestures", !prefs.getBoolean("gestures", true)).apply()
         }.apply {
-            addView(label("Set it up once: watch Settings → Advanced features → Customize buttons → Quick button → open app → Running. " +
-                "Then press once on the Running screen to start; during a run press once for a lap (next step in a workout), " +
-                "press twice quickly to finish and save.", C.MUTED, 9f))
-            addView(label("", C.DIM, 9f).also { startValues["lastKey"] = it })
+            addView(label("Anywhere on a run screen: double-tap for a lap (next step in a workout); press and hold " +
+                "about a second to pause and open Finish (big SAVE / RESUME). Tip: set the orange Quick button to open Running.", C.MUTED, 9f))
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
@@ -637,177 +634,32 @@ class RunActivity : Activity() {
     @Deprecated("Deprecated in Java")
     /** Back gesture (swipe): navigation only — never starts or ends a run, never leaves mid-run. */
     override fun onBackPressed() {
-        if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording
+        if (screen == Screen.LIVE && !wrongDevice) { moveTaskToBack(true); return }   // run keeps recording; reopen to return
         if (editorRotary != null || overlayOpen) { editorRotary = null; overlayOpen = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.START && showSettings) { showSettings = false; startBuilt = false; renderStart(); return }
         if (screen == Screen.SUMMARY) { finish(); return }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
-    /** Notes which buttons reach the app (shown in Settings); "stem" keys act like the orange button. */
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (wrongDevice) return super.dispatchKeyEvent(event)
-        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0)
-            prefs.edit().putString("lastKey", android.view.KeyEvent.keyCodeToString(event.keyCode)).apply()
-        val stem = event.keyCode == android.view.KeyEvent.KEYCODE_STEM_PRIMARY || event.keyCode == android.view.KeyEvent.KEYCODE_STEM_1
-        if (stem && prefs.getBoolean("orangeButton", true)) {
-            if (event.action == android.view.KeyEvent.ACTION_UP) orangeButton(visible = true)
-            return true
-        }
-        return super.dispatchKeyEvent(event)
+    /** On a run data screen (not Controls or the Finish screen). */
+    private fun onDataScreen(): Boolean {
+        if (screen != Screen.LIVE || confirmingFinish) return false
+        val order = pageOrder()
+        return order.getOrNull(page) != 0
     }
 
-    /**
-     * The orange Quick button, set to open Running (watch Settings → Advanced features → Customize
-     * buttons → Quick button → Running). Each press while Running is open arrives as a new launch.
-     */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (wrongDevice || intent.action != Intent.ACTION_MAIN || !prefs.getBoolean("orangeButton", true)) return
-        // "Showing" = on screen now or within the last few seconds (Samsung briefly hides the app while
-        // it handles the button press, so the app is never "on screen" at the exact moment it arrives).
-        val now = System.currentTimeMillis()
-        val ago = listOf(now - lastShownAt, if (stoppedAt > 0) now - stoppedAt else 0L).minOrNull() ?: 0L
-        val visible = isOnScreen || ago < 5000
-        val decision = when {
-            screen == Screen.START && Run.isActive -> "run already going"
-            screen == Screen.START && !visible -> "just opened Running (not showing ${ago / 1000}s)"
-            screen == Screen.START -> "START"
-            screen == Screen.LIVE -> "lap / finish"
-            else -> "close summary"
-        }
-        logButton("orange · focus=$isOnScreen · shown ${ago}ms ago · screen=$screen → $decision")
-        prefs.edit().putString("lastKey", "Orange button (Running opened)").apply()
-        try { orangeButton(visible) } catch (e: Exception) { logButton("ERROR: ${e.javaClass.simpleName}: ${e.message}") }
+    /** Lap now (next step in a workout), with a buzz and a short note on screen. */
+    private fun lapNow() {
+        if (!Run.isActive) return
+        if (Run.hasWorkout && !Run.workoutDone) { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
+        else { Run.lap(); flash("LAP ${Run.laps.size}") }
     }
 
-    /** Press = start (on the Running screen) or lap during a run; double press = finish and save. */
-    private fun orangeButton(visible: Boolean) {
-        when (screen) {
-            Screen.START -> {
-                // Opening Running from somewhere else just opens it; a press while it's showing starts the run.
-                if (Run.isActive || !visible) return
-                editorRotary = null; overlayOpen = false; showSettings = false
-                pulse(longArrayOf(0, 400)); startRun()
-            }
-            Screen.LIVE -> backButton()   // lap, or finish on a double press
-            Screen.SUMMARY -> finish()
-        }
-    }
-
-    // ---------------------------------------------------------------- live pages
-
-    private var liveBuilt = false
-    private lateinit var liveTitle: TextView
-    private lateinit var fieldA: Pair<TextView, TextView>
-    private lateinit var fieldB: Pair<TextView, TextView>
-    private lateinit var fieldC: Pair<TextView, TextView>
-    private lateinit var fieldD: Pair<TextView, TextView>
-    private lateinit var dataBox: LinearLayout
-    private lateinit var zoneBar: LinearLayout
-    private lateinit var controlsBox: LinearLayout
-    private lateinit var dots: TextView
-    private lateinit var gestures: GestureDetector
-
-    private fun field(valueSize: Float): Pair<LinearLayout, Pair<TextView, TextView>> {
-        val v = label("--", Color.WHITE, valueSize, true)
-        val l = label("", C.MUTED, 11f)
-        val box = column().apply { addView(v); addView(l) }
-        return box to (v to l)
-    }
-
-    private fun buildLive() {
-        liveBuilt = true
-        startBuilt = false
-        val w = resources.displayMetrics.widthPixels
-        root.removeAllViews()
-
-        val page = column().apply {
-            gravity = Gravity.CENTER
-            setPadding(w / 10, w / 9, w / 10, w / 10)
-            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-        }
-        pageView = page
-        customBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-        }
-        builtScreen = -1
-        liveTitle = label("", C.ACCENT, 12f, true).apply { letterSpacing = 0.1f }
-        page.addView(liveTitle)
-
-        dataBox = column()
-        val (a, fa) = field(40f); fieldA = fa
-        val (b, fb) = field(26f); fieldB = fb
-        val (c, fc) = field(26f); fieldC = fc
-        val (d, fd) = field(24f); fieldD = fd
-        dataBox.addView(a)
-        dataBox.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(b, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-            addView(c, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) }
-        })
-        dataBox.addView(d.apply { setPadding(0, dp(4), 0, 0) })
-        zoneBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            visibility = View.GONE
-            Run.ZONE_COLORS.forEach { color ->
-                addView(View(context).apply { background = rounded(color, 3) },
-                    LinearLayout.LayoutParams(0, dp(6), 1f).apply { marginStart = dp(2); marginEnd = dp(2) })
-            }
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
-        }
-        dataBox.addView(zoneBar)
-        page.addView(dataBox)
-
-        controlsBox = column().apply { visibility = View.GONE }
-        page.addView(controlsBox)
-
-        dots = label("", C.DIM, 12f).apply { setPadding(0, dp(6), 0, 0) }
-        page.addView(dots)
-        root.addView(page)
-        root.addView(customBox)
-
-        gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                if (abs(vx) > abs(vy) && abs(vx) > 400) { turnPage(if (vx < 0) 1 else -1); return true }
-                return false
-            }
-        })
-        root.isFocusable = true
-        root.isFocusableInTouchMode = true
-        root.requestFocus()
-    }
-
-    // ---------------------------------------------------------------- watch buttons
-
-    /**
-     * Orange button during a run: one press = lap (or next workout step), a quick double press =
-     * finish and save. A single press waits ~half a second to make sure it isn't a double.
-     */
-    private var pendingLap: Runnable? = null
-
-    private fun backButton() {
-        val waiting = pendingLap
-        if (waiting != null) {
-            // Second press: it's a double press → finish.
-            handler.removeCallbacks(waiting); pendingLap = null
-            if (Run.state != Run.State.RUNNING) Run.resume()   // a paused run still saves normally
-            pulse(longArrayOf(0, 200, 100, 200, 100, 700))
-            finishRun()
-            return
-        }
-        val lap = Runnable {
-            pendingLap = null
-            if (!Run.isActive) return@Runnable
-            if (Run.hasWorkout && !Run.workoutDone) { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
-            else { Run.lap(); flash("LAP ${Run.laps.size}") }
-        }
-        pendingLap = lap
-        handler.postDelayed(lap, 700)   // button presses arrive as app launches, so allow a bit longer
+    /** Pause and show the Finish screen with a big SAVE button. */
+    private fun openFinish() {
+        Run.pause()
+        confirmingFinish = true; page = 0
+        pulse(longArrayOf(0, 500)); renderLive()
     }
 
     private fun pulse(p: LongArray) {
@@ -1135,12 +987,17 @@ class RunActivity : Activity() {
             }
 
         if (confirmingFinish) {
-            controlsBox.addView(label("Tip: double-press the orange button to finish", C.MUTED, 10f))
-            controlsBox.addView(button("SAVE RUN", C.OK) { finishRun() })
-            controlsBox.addView(button("Discard", C.STOP, Color.WHITE) {
-                Run.discard(this); RunService.stop(this); finish()
+            // Big targets you can hit mid-stride.
+            controlsBox.addView(button("SAVE", C.OK) { pulse(longArrayOf(0, 200, 100, 200, 100, 700)); finishRun() }.apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f); setPadding(0, dp(26), 0, dp(26))
             })
-            controlsBox.addView(button("Back", C.CARD, Color.WHITE) { confirmingFinish = false })
+            controlsBox.addView(button("RESUME", C.ACCENT) { confirmingFinish = false; Run.resume() }.apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f); setPadding(0, dp(16), 0, dp(16))
+            })
+            controlsBox.addView(label("Discard run", C.STOP, 11f, true).apply {
+                setPadding(0, dp(10), 0, 0)
+                setOnClickListener { Run.discard(this@RunActivity); RunService.stop(this@RunActivity); finish() }
+            })
         } else {
             controlsBox.addView(if (paused) button("RESUME", C.ACCENT) { Run.resume() }
                                 else button("PAUSE", C.PAUSE) { Run.pause() })
