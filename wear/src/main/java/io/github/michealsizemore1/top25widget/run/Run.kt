@@ -244,6 +244,19 @@ object Run {
     var movingSeconds = 0; private set
     var distance = 0.0; private set          // meters
     private var lastStrydTotal: Double? = null
+    // Elevation from the barometer: smoothed altitude, counting climbs/descents of more than 2 m (ignores pressure noise).
+    private var altSmooth = Double.NaN
+    private var altRef = Double.NaN
+    @Volatile var elevGain = 0.0; private set
+    @Volatile var elevLoss = 0.0; private set
+    fun onPressure(hPa: Float) {
+        val alt = android.hardware.SensorManager.getAltitude(android.hardware.SensorManager.PRESSURE_STANDARD_ATMOSPHERE, hPa).toDouble()
+        altSmooth = if (altSmooth.isNaN()) alt else altSmooth + (alt - altSmooth) * 0.15
+        if (state != State.RUNNING) { altRef = altSmooth; return }
+        if (altRef.isNaN()) { altRef = altSmooth; return }
+        val d = altSmooth - altRef
+        if (d > 2.0) { elevGain += d; altRef = altSmooth } else if (d < -2.0) { elevLoss -= d; altRef = altSmooth }
+    }
     /** True while Stryd isn't sending and GPS stands in. */
     @Volatile var usingGpsFallback = false; private set
     private var gpsFallbackSeconds = 0
@@ -344,6 +357,7 @@ object Run {
     private fun reset() {
         state = State.IDLE; startMillis = 0; movingSeconds = 0; distance = 0.0
         startLoc = null
+        elevGain = 0.0; elevLoss = 0.0; altRef = Double.NaN
         usingGpsFallback = false; gpsFallbackSeconds = 0; synchronized(strydLog) { strydLog.clear() }
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
         power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
@@ -496,6 +510,7 @@ object Run {
         put("start", startMillis); put("end", endMillis)
         startLoc?.let { put("startLoc", JSONArray(listOf(it[0], it[1]))) }
         if (gpsFallbackSeconds > 0) put("gpsFallbackSeconds", gpsFallbackSeconds)
+        if (!altSmooth.isNaN()) { put("elevGain", Math.round(elevGain * 10) / 10.0); put("elevLoss", Math.round(elevLoss * 10) / 10.0) }   // meters, barometer
         synchronized(strydLog) { if (strydLog.isNotEmpty()) put("strydLog", JSONArray(strydLog)) }
         put("source", source.name.lowercase())
         put("movingSeconds", movingSeconds); put("elapsedSeconds", ((endMillis - startMillis) / 1000).toInt())

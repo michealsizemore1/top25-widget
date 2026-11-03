@@ -87,8 +87,10 @@ object CommandCenter {
                 if (w.has("humidity")) put("humidity", w.optLong("humidity"))
                 if (w.has("aqi")) put("aqi", w.optLong("aqi"))
             }
+            // Elevation gain: the watch's barometer (or the route), else Stryd's.
+            run.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
             run.optJSONObject("stryd")?.let { s ->
-                s.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
+                if (!has("elevGain")) s.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
                 if (!has("temp")) s.optDouble("temp").takeIf { !it.isNaN() }?.let { put("temp", Math.round(it * 9 / 5 + 32).toString()) }
                 if (!has("humidity")) s.optDouble("humidity").takeIf { !it.isNaN() }?.let { put("humidity", Math.round(it)) }
                 s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { put("airPower", it) }

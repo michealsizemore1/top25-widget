@@ -103,8 +103,13 @@ class RunDetailActivity : Activity() {
         // Weather and air quality at the run (sent to the Command Center).
         col.addView(RunUi.section(this, "WEATHER"))
         val wx = run.optJSONObject("weather")
+        if (wx != null && !RunWeather.has(run) && !weatherTried) {   // weather there, climb still missing
+            weatherTried = true
+            Thread { if (try { RunWeather.fill(this, start) } catch (e: Exception) { false }) runOnUiThread { PhoneRuns.read(this, start)?.let { render(it) } } }.start()
+        }
         if (wx != null) col.addView(RunUi.card(this).apply {
             addView(RunUi.statGrid(ctx, listOfNotNull(
+                run.optDouble("elevGain").takeIf { !it.isNaN() }?.let { Triple("${Math.round(it * 3.28084)}", "ft climb", Color.WHITE) },
                 wx.takeIf { it.has("tempF") }?.let { Triple("${it.optLong("tempF")}°", "temp °F", Color.WHITE) },
                 wx.takeIf { it.has("humidity") }?.let { Triple("${it.optLong("humidity")}%", "humidity", Color.WHITE) },
                 wx.takeIf { it.has("aqi") }?.let { Triple("${it.optLong("aqi")}", "AQI (US)", aqiColor(it.optInt("aqi"))) },

@@ -92,6 +92,10 @@ class RunService : Service(), SensorEventListener, LocationListener {
             val sm = getSystemService(SensorManager::class.java)
             sm.getDefaultSensor(Sensor.TYPE_HEART_RATE)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         }
+        // Barometer, for elevation gain (no permission needed).
+        getSystemService(SensorManager::class.java).getDefaultSensor(Sensor.TYPE_PRESSURE)?.let {
+            getSystemService(SensorManager::class.java).registerListener(this, it, 1_000_000)
+        }
 
         // Stryd footpod.
         if (Build.VERSION.SDK_INT < 31 || has(this, Manifest.permission.BLUETOOTH_CONNECT)) {
@@ -178,6 +182,10 @@ class RunService : Service(), SensorEventListener, LocationListener {
     // ---------------------------------------------------------------- heart rate
 
     override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type == Sensor.TYPE_PRESSURE) {
+            event.values.firstOrNull()?.takeIf { it in 300f..1100f }?.let { Run.onPressure(it) }
+            return
+        }
         if (event.sensor.type == Sensor.TYPE_HEART_RATE) {
             val bpm = event.values.firstOrNull()?.toInt() ?: 0
             if (event.accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_LOW && bpm in 30..230) {
