@@ -34,15 +34,68 @@ object Speaker {
                 tts?.setAudioAttributes(AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)   // ducks music
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                tts?.setOnUtteranceProgressListener(progress)
                 ready = true; status = "Ready"
             } else { status = "No voice on this watch (install a text-to-speech engine)" }
         }
     }
 
+    // ---- Making prompts heard over music: lower (or pause) the music and turn the voice up while speaking.
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var pending = 0
+    private var focus: android.media.AudioFocusRequest? = null
+    private var savedVolume = -1
+
+    private fun audio() = app.getSystemService(android.media.AudioManager::class.java)
+
+    private fun beginSpeaking() {
+        val am = audio() ?: return
+        if (focus == null) {
+            val pause = p().getString("voiceMusic", "duck") == "pause"
+            focus = android.media.AudioFocusRequest.Builder(
+                if (pause) android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT else android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setWillPauseWhenDucked(false).build()
+            try { am.requestAudioFocus(focus!!) } catch (e: Exception) { }
+            if (p().getBoolean("voiceBoost", true)) try {
+                val s = android.media.AudioManager.STREAM_MUSIC
+                val max = am.getStreamMaxVolume(s); val cur = am.getStreamVolume(s)
+                val loud = (max * 0.85).toInt().coerceAtLeast(1)
+                if (cur < loud) { savedVolume = cur; am.setStreamVolume(s, loud, 0) }
+            } catch (e: Exception) { }
+        }
+    }
+
+    private fun doneSpeaking() {
+        // A short pause first, so back-to-back prompts don't make the music bounce.
+        main.postDelayed({
+            if (pending > 0) return@postDelayed
+            val am = audio() ?: return@postDelayed
+            if (savedVolume >= 0) { try { am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, savedVolume, 0) } catch (e: Exception) { }; savedVolume = -1 }
+            focus?.let { try { am.abandonAudioFocusRequest(it) } catch (e: Exception) { } }
+            focus = null
+        }, 400)
+    }
+
+    private val progress = object : android.speech.tts.UtteranceProgressListener() {
+        override fun onStart(id: String?) {}
+        override fun onDone(id: String?) { pending = (pending - 1).coerceAtLeast(0); doneSpeaking() }
+        @Deprecated("Deprecated in Java") override fun onError(id: String?) { pending = (pending - 1).coerceAtLeast(0); doneSpeaking() }
+        override fun onError(id: String?, code: Int) { pending = (pending - 1).coerceAtLeast(0); doneSpeaking() }
+    }
+
     fun say(text: String, force: Boolean = false) {
         if (!force && !on()) return
         if (!ready) return
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "run${System.nanoTime()}")
+        main.post {
+            pending++
+            beginSpeaking()
+            val params = android.os.Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f) }
+            // Speak a moment after the music dips, so the first word isn't lost.
+            main.postDelayed({ if (tts?.speak(text, TextToSpeech.QUEUE_ADD, params, "run${System.nanoTime()}") != TextToSpeech.SUCCESS) {
+                pending = (pending - 1).coerceAtLeast(0); doneSpeaking() } }, 250)
+        }
     }
 
     // ---------------------------------------------------------------- phrasing
@@ -92,6 +145,8 @@ object Speaker {
             "trail_done" -> say("Trail complete. " + miles(Run.distance) + " in " + duration(Run.movingSeconds))
             "push" -> if (alerts()) say(targetText(push = true))
             "ease" -> if (alerts()) say(targetText(push = false))
+            "stryd_lost" -> say("Stryd signal lost. Using GPS for distance.", force = true)
+            "stryd_back" -> say("Stryd connected.")
             "hrcap" -> if (alerts()) say("Heart rate ${Run.heartRate}. Ease up. Stay under ${Run.hrCap}.")
             "hrcap_ok" -> if (alerts()) say("Back under ${Run.hrCap}. Nice.")
         }

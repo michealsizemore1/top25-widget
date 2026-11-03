@@ -244,6 +244,13 @@ object Run {
     var movingSeconds = 0; private set
     var distance = 0.0; private set          // meters
     private var lastStrydTotal: Double? = null
+    /** True while Stryd isn't sending and GPS stands in. */
+    @Volatile var usingGpsFallback = false; private set
+    private var gpsFallbackSeconds = 0
+    private val strydLog = ArrayList<String>()
+    fun logStryd(what: String) {
+        synchronized(strydLog) { if (strydLog.size < 200) strydLog += (if (startMillis > 0) "${elapsedSeconds}s " else "") + what }
+    }
     private var slowSeconds = 0
 
     private val samples = ArrayList<IntArray>()  // per second: t, meters*10, hr, speed*100, cadence, power
@@ -337,6 +344,7 @@ object Run {
     private fun reset() {
         state = State.IDLE; startMillis = 0; movingSeconds = 0; distance = 0.0
         startLoc = null
+        usingGpsFallback = false; gpsFallbackSeconds = 0; synchronized(strydLog) { strydLog.clear() }
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
         power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
         zoneSeconds.fill(0); lapPowerSum = 0; lapPowerCount = 0; maxPower = 0
@@ -375,11 +383,19 @@ object Run {
 
     fun tick() {
         val now = System.currentTimeMillis()
-        if (strydConnected && now - strydLastUpdate > 5000) strydSpeed = 0.0
+        // Old Stryd readings don't count (connected or not).
+        if (now - strydLastUpdate > 5000) { strydSpeed = 0.0; strydPower = 0; strydCadence = 0 }
+        // Stryd lost during a run: use GPS for pace and distance until it's back.
+        val strydLost = source == Source.STRYD && isActive && startMillis > 0 && now - strydLastUpdate > 10_000
+        if (strydLost != usingGpsFallback) {
+            usingGpsFallback = strydLost
+            if (state == State.RUNNING || state == State.AUTO_PAUSED) onEvent?.invoke(if (strydLost) "stryd_lost" else "stryd_back")
+            logStryd(if (strydLost) "lost, using GPS" else "back")
+        }
         if (now - gpsLastUpdate > 5000) gpsSpeed = 0.0
         if (now - strapLastUpdate > 10_000 && now - wristLastUpdate > 10_000) heartRate = 0
 
-        val speedNow = if (source == Source.STRYD) strydSpeed * strydCalibration else gpsSpeed
+        val speedNow = if (source == Source.STRYD && !usingGpsFallback) strydSpeed * strydCalibration else gpsSpeed
 
         if (state == State.RUNNING || state == State.AUTO_PAUSED) {
             // Auto-pause: stopped for 4 seconds pauses; moving again resumes.
@@ -397,7 +413,8 @@ object Run {
         if (state == State.RUNNING) {
             movingSeconds++
             // Distance from the chosen source.
-            val step = if (source == Source.STRYD) {
+            if (usingGpsFallback) gpsFallbackSeconds++
+            val step = if (source == Source.STRYD && !usingGpsFallback) {
                 val total = strydTotalDistance
                 val last = lastStrydTotal
                 val d = if (total != null && last != null && total >= last && total - last < 50) total - last
@@ -476,6 +493,8 @@ object Run {
     fun toJson(endMillis: Long = System.currentTimeMillis()) = JSONObject().apply {
         put("start", startMillis); put("end", endMillis)
         startLoc?.let { put("startLoc", JSONArray(listOf(it[0], it[1]))) }
+        if (gpsFallbackSeconds > 0) put("gpsFallbackSeconds", gpsFallbackSeconds)
+        synchronized(strydLog) { if (strydLog.isNotEmpty()) put("strydLog", JSONArray(strydLog)) }
         put("source", source.name.lowercase())
         put("movingSeconds", movingSeconds); put("elapsedSeconds", ((endMillis - startMillis) / 1000).toInt())
         put("distance", distance)

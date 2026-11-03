@@ -109,6 +109,11 @@ class RunSettingsActivity : Activity() {
         switch("Each lap / mile", "Time, pace, heart rate, power", RunSettings.bool(this, "voiceLaps")) { RunSettings.setBool(ctx, "voiceLaps", it) }
         switch("Workout steps", "What's next, and step results", RunSettings.bool(this, "voiceSteps")) { RunSettings.setBool(ctx, "voiceSteps", it) }
         switch("Target alerts", "Speed up / ease off", RunSettings.bool(this, "voiceAlerts")) { RunSettings.setBool(ctx, "voiceAlerts", it) }
+        switch("Louder prompts", "Turns the volume up while speaking, then back", RunSettings.bool(this, "voiceBoost")) { RunSettings.setBool(ctx, "voiceBoost", it) }
+        switch("Pause music while speaking", "Off = lower the music instead", getSharedPreferences("runsettings", 0).getString("voiceMusic", "duck") == "pause") {
+            getSharedPreferences("runsettings", 0).edit().putString("voiceMusic", if (it) "pause" else "duck").putLong("settingsAt", System.currentTimeMillis()).apply()
+            RunSettings.pushToWatch(ctx)
+        }
         val everyOpts = listOf(0, 5, 10, 15, 20, 30)
         col.addView(RunUi.card(this).apply {
             val every = RunSettings.voiceEvery(ctx)

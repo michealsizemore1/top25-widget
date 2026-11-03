@@ -23,6 +23,8 @@ object LiveTrack {
     private var lastMoveAt = 0L
     private var warned = false
     private var alerted = false
+    private var lastDistM = 0.0
+    private var lastMovingS = 0
 
     private fun p(ctx: Context) = ctx.getSharedPreferences("run", 0)
     fun enabled(ctx: Context) = p(ctx).getBoolean("liveOn", false) && db(ctx).isNotBlank() && id(ctx).isNotBlank()
@@ -124,10 +126,17 @@ object LiveTrack {
                     Speaker.say("Alert sent.", force = true)
                 }
             }
+            lastDistM = Run.distance; lastMovingS = Run.movingSeconds
             if (t - lastPost >= 30_000 || Run.state != lastState) post(ctx, false)
         } else if (runStart != 0L) {
             // Run finished (or discarded).
-            send(ctx, "PATCH", "", JSONObject().put("now", now(ctx, "finished")))
+            send(ctx, "PATCH", "", JSONObject().put("now", now(ctx, "finished")
+                .put("dist", Math.round(lastDistM)).put("moving", lastMovingS)))
+            // Tell your contacts the run is over (with the totals).
+            val mi = lastDistM / 1609.344
+            val pace = if (mi > 0.05) (lastMovingS / mi).toInt().let { String.format(java.util.Locale.US, " (%d:%02d /mi)", it / 60, it % 60) } else ""
+            val summary = String.format(java.util.Locale.US, "%.2f mi in %s", mi, Run.clock(lastMovingS)) + pace
+            textVia(ctx, "/cmd/livedone", summary, "${name(ctx)} finished the run: $summary. ${link(ctx)}")
             runStart = 0L; status = "Finished"
         }
     }

@@ -36,6 +36,8 @@ object SettingsSync {
         "voiceEvery" to (T.INT to 0),
         "voiceSteps" to (T.BOOL to true),
         "voiceAlerts" to (T.BOOL to true),
+        "voiceMusic" to (T.STRING to "duck"), // while speaking: duck (lower music) | pause
+        "voiceBoost" to (T.BOOL to true),     // raise volume while speaking
         "trailArea" to (T.STRING to ""),      // "" = near me, else "label|lat|lon"
         "trailRadius" to (T.INT to 4),        // miles
         "trailSort" to (T.STRING to "near"),  // near | long

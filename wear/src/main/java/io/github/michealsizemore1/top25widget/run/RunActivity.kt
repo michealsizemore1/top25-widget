@@ -857,6 +857,11 @@ class RunActivity : Activity() {
         })
         col.addView(toggle("voiceSteps", "Workout steps (what's next)"))
         col.addView(toggle("voiceAlerts", "Target alerts (speed up / ease off)"))
+        val music = prefs.getString("voiceMusic", "duck")
+        col.addView(card("Music while speaking", if (music == "pause") "Pause it" else "Lower it", C.ACCENT) {
+            prefs.edit().putString("voiceMusic", if (music == "pause") "duck" else "pause").apply(); showVoiceSettings()
+        })
+        col.addView(toggle("voiceBoost", "Louder prompts (turns volume up while speaking)"))
         col.addView(card("Test the voice", "", C.ACCENT) {
             Speaker.say("Lap 1. 8 minutes 32 seconds. Pace 8 32. Heart rate 142", force = true)
         })

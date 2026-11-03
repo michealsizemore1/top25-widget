@@ -215,7 +215,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
 
     /** GPS runs only when it's the pace source or a GPS track is wanted. */
     private fun updateGps() {
-        val want = (Run.source == Run.Source.GPS || Run.recordGpsTrack || Run.nav != null || LiveTrack.enabled(this)) &&
+        val want = (Run.source == Run.Source.GPS || Run.recordGpsTrack || Run.nav != null || LiveTrack.enabled(this) || Run.usingGpsFallback) &&
             has(this, Manifest.permission.ACCESS_FINE_LOCATION)
         if (want && !gpsOn) startGps() else if (!want && gpsOn) stopGps()
     }
@@ -270,6 +270,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
             "ease" -> longArrayOf(0, 600)                               // ease off
             "hrcap" -> longArrayOf(0, 600, 200, 600)                    // over the easy-day heart-rate cap
             "hrcap_ok" -> longArrayOf(0, 120)
+            "stryd_lost" -> longArrayOf(0, 300, 150, 300, 150, 300)
             else -> longArrayOf(0, 200)
         }
         v.vibrate(VibrationEffect.createWaveform(pattern, -1))

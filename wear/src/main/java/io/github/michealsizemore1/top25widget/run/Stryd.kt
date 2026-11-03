@@ -124,18 +124,42 @@ class Stryd(private val ctx: Context) {
 
     // ---------------------------------------------------------------- connection
 
+    private var failures = 0
+
     private fun connect(device: BluetoothDevice) {
         Run.strydStatus = "Connecting…"
         try { gatt?.close() } catch (e: Exception) { }
-        gatt = device.connectGatt(ctx, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        // After a couple of quick tries, let Android keep the link and reconnect by itself whenever the pod is in range.
+        gatt = device.connectGatt(ctx, failures >= 2, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        startWatchdog()
     }
 
     private fun reconnectLater() {
         if (stopped) return
+        failures++
+        Run.logStryd("reconnect #$failures")
         handler.postDelayed({
             if (!stopped) savedAddress(ctx)?.let { addr -> adapter?.let { connect(it.getRemoteDevice(addr)) } }
-        }, 3000)
+        }, if (failures < 3) 2000L else 5000L)
     }
+
+    /** Connected but nothing arriving for 8 s (the pod or Bluetooth got stuck): drop the link and connect again. */
+    private val watchdog = object : Runnable {
+        override fun run() {
+            if (stopped) return
+            val g = gatt
+            if (g != null && Run.strydConnected && System.currentTimeMillis() - Run.strydLastUpdate > 8000) {
+                Run.logStryd("no data 8 s, reconnecting")
+                Run.strydConnected = false
+                Run.strydStatus = "Reconnecting…"
+                try { g.disconnect(); g.close() } catch (e: Exception) { }
+                gatt = null
+                reconnectLater()
+            }
+            handler.postDelayed(this, 4000)
+        }
+    }
+    private fun startWatchdog() { handler.removeCallbacks(watchdog); handler.postDelayed(watchdog, 12_000) }
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
@@ -143,6 +167,7 @@ class Stryd(private val ctx: Context) {
                 Run.strydStatus = "Connected"
                 g.discoverServices()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                Run.logStryd("disconnected (status $status)")
                 Run.strydConnected = false
                 Run.strydStatus = "Reconnecting…"
                 try { g.close() } catch (e: Exception) { }
@@ -157,6 +182,9 @@ class Stryd(private val ctx: Context) {
             g.getService(POWER_SERVICE)?.getCharacteristic(POWER_MEASUREMENT)?.let { pendingNotify.addLast(it) }
             if (pendingNotify.isEmpty()) { Run.strydStatus = "Not a Stryd?"; return }
             Run.strydConnected = true
+            Run.strydLastUpdate = System.currentTimeMillis()   // give the watchdog a fresh start
+            failures = 0
+            Run.logStryd("connected")
             Run.strydStatus = "Connected · ${savedName(ctx) ?: "Stryd"}"
             enableNext(g)
         }
@@ -211,8 +239,8 @@ class Stryd(private val ctx: Context) {
             RSC_MEASUREMENT -> if (b.size >= 4) {
                 val flags = u8(b, 0)
                 val speed = u16(b, 1) / 256.0           // m/s
-                var cadence = u8(b, 3)                  // per spec steps/min; some pods send strides/min
-                if (cadence in 1..119 && speed > 1.8) cadence *= 2
+                var cadence = u8(b, 3)                  // Stryd sends strides/min (one foot); show steps/min
+                if (cadence in 1..130) cadence *= 2
                 var i = 4
                 if (flags and 0x01 != 0 && b.size >= i + 2) { Run.strydStride = u16(b, i) / 100.0; i += 2 }   // stride length, cm
                 if (flags and 0x02 != 0 && b.size >= i + 4) Run.strydTotalDistance = u32(b, i) / 10.0

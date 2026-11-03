@@ -62,6 +62,11 @@ object Live {
             Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Follow my run live: ${link(ctx)}"))
     }
 
+    /** Run finished: let contacts know (with the totals). */
+    fun done(ctx: Context, summary: String) {
+        if (smsOn(ctx)) text(ctx, "${name(ctx)} finished the run: $summary. ${link(ctx)}")
+    }
+
     /** Watch says you haven't moved for a while. */
     fun alert(ctx: Context, loc: String) {
         val where = if (loc.contains(",")) " Last location: https://maps.google.com/?q=$loc" else ""
