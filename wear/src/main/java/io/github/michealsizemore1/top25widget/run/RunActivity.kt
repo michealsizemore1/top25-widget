@@ -116,6 +116,23 @@ class RunActivity : Activity() {
         }
         screen = if (Run.isActive) Screen.LIVE else Screen.START
         requestNeeded()
+        tileStart(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        tileStart(intent)
+    }
+
+    /** "Start" on the Running tile: open and start the run right away. */
+    private fun tileStart(i: android.content.Intent?) {
+        if (i?.getBooleanExtra(RunTileService.EXTRA_START, false) != true) return
+        i.removeExtra(RunTileService.EXTRA_START)
+        if (Run.isActive || wrongDevice) return
+        handler.postDelayed({
+            if (!Run.isActive && screen == Screen.START) { overlayOpen = false; showSettings = false; startRun(); flash("Run started") }
+        }, 700)
     }
 
     override fun onResume() {
@@ -129,6 +146,7 @@ class RunActivity : Activity() {
         render()
     }
     override fun onPause() {
+        RunTileService.refresh(this)
         if (isOnScreen || hasWindowFocus()) lastShownAt = System.currentTimeMillis()
         isOnScreen = false
         super.onPause()
@@ -254,6 +272,7 @@ class RunActivity : Activity() {
         set("hr", hrText, if (Run.strapActive || (!Run.useStrap && Run.heartRate > 0)) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
+        set("hrcap", when (Run.hrCapMode) { "off" -> "Off"; "all" -> "Easy days + free runs · under ${Run.hrCap}"; else -> "Easy days · under ${Run.hrCap}" })
         set("live", if (!prefs.getBoolean("liveOn", false)) "Off" else if (Run.isActive) "On · ${LiveTrack.status}" else "On")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
         calRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
@@ -444,6 +463,10 @@ class RunActivity : Activity() {
         col.addView(row("live", "LiveTrack (GPS on, shares your run)") {
             if (prefs.getString("liveDb", "").isNullOrBlank()) flash("Set up LiveTrack in the phone app first")
             else prefs.edit().putBoolean("liveOn", !prefs.getBoolean("liveOn", false)).apply()
+        })
+        col.addView(row("hrcap", "Easy-day heart-rate cap") {
+            val next = when (Run.hrCapMode) { "off" -> "easy"; "easy" -> "all"; else -> "off" }
+            Run.hrCapMode = next; prefs.edit().putString("hrCap", next).apply()
         })
         col.addView(row("screensRow", "Data screens (during a run)") { showScreensEditor() })
         col.addView(row("voiceRow", "Audio prompts") { showVoiceSettings() })

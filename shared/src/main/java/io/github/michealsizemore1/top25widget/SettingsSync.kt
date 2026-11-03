@@ -39,6 +39,8 @@ object SettingsSync {
         "trailArea" to (T.STRING to ""),      // "" = near me, else "label|lat|lon"
         "trailRadius" to (T.INT to 4),        // miles
         "trailSort" to (T.STRING to "near"),  // near | long
+        "hrCap" to (T.STRING to "easy"),      // easy-day heart-rate cap: off | easy | all (easy days + free runs)
+        "hrCapZone" to (T.INT to 2),          // stay in this zone or below
         "liveOn" to (T.BOOL to false),        // LiveTrack
         "liveDb" to (T.STRING to ""),         // Firebase Realtime Database URL
         "liveId" to (T.STRING to ""),         // private tracking id (part of the link)

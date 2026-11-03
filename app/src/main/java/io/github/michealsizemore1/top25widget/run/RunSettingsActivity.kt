@@ -79,6 +79,28 @@ class RunSettingsActivity : Activity() {
         switch("Bottom button: start · lap · double-press finish", "", RunSettings.bool(this, "bottomBtn")) { RunSettings.setBool(ctx, "bottomBtn", it) }
         switch("Gestures: double-tap = lap · hold = finish", "", RunSettings.bool(this, "gestures")) { RunSettings.setBool(ctx, "gestures", it) }
 
+        // ---- easy-day heart-rate cap
+        col.addView(RunUi.card(this).apply {
+            val p = getSharedPreferences("runsettings", 0)
+            val mode = p.getString("hrCap", "easy") ?: "easy"; val zone = p.getInt("hrCapZone", 2)
+            val b = RunMath.hrBounds(RunSettings.hrMax(ctx), RunSettings.hrRest(ctx))
+            val cap = if (zone in 1..4) b[zone] - 1 else RunSettings.hrMax(ctx).toInt()
+            addView(RunUi.text(ctx, "Easy-day heart-rate cap: " + when (mode) { "off" -> "Off"; "all" -> "Easy days + free runs"; else -> "Easy days" } + "  ›", RunUi.ACCENT, 15f, true))
+            addView(RunUi.text(ctx, "Buzz + \"ease up\" when you go over Zone $zone ($cap bpm) on easy runs, recovery runs, long runs " +
+                "and the easy parts of workouts. No \"speed up\" nags on easy steps.", RunUi.MUTED, 12f))
+            setOnClickListener {
+                val opts = listOf("off" to "Off", "easy" to "Easy days (from your plan)", "all" to "Easy days + free runs")
+                android.app.AlertDialog.Builder(ctx).setTitle("Easy-day heart-rate cap").setItems(opts.map { it.second }.toTypedArray()) { _, i ->
+                    p.edit().putString("hrCap", opts[i].first).putLong("settingsAt", System.currentTimeMillis()).apply(); RunSettings.pushToWatch(ctx)
+                    if (opts[i].first != "off") android.app.AlertDialog.Builder(ctx).setTitle("Stay at or below")
+                        .setItems((1..3).map { z -> "Zone $z (under ${b[z] - 1} bpm)" }.toTypedArray()) { _, j ->
+                            p.edit().putInt("hrCapZone", j + 1).putLong("settingsAt", System.currentTimeMillis()).apply(); RunSettings.pushToWatch(ctx); render()
+                        }.setOnCancelListener { render() }.show()
+                    else render()
+                }.show()
+            }
+        })
+
         // ---- audio prompts
         col.addView(RunUi.section(this, "AUDIO PROMPTS · SAME ON WATCH"))
         col.addView(RunUi.text(this, "Spoken on the watch: through Bluetooth headphones when connected, otherwise the watch speaker.",

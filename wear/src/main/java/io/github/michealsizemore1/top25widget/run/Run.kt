@@ -113,6 +113,7 @@ object Run {
         if (stepSeconds < grace) return
         outSeconds = if (status == 0) 0 else outSeconds + 1
         val now = System.currentTimeMillis()
+        if (capApplies()) return   // easy step: the heart-rate cap does the reminding (no "speed up" nags)
         if (outSeconds >= 8 && now - lastNudge > 30_000) {
             lastNudge = now
             // For pace, a bigger number means slower — so "above" means speed up.
@@ -156,6 +157,41 @@ object Run {
     fun hrrPercent(bpm: Int) = if (bpm <= 0) 0 else ((bpm - hrRest) * 100 / (hrMax - hrRest).coerceAtLeast(1.0)).roundToInt()
 
     // ---------------------------------------------------------------- settings
+    // Easy-day heart-rate cap.
+    @Volatile var hrCapMode = "easy"          // off | easy | all
+    @Volatile var hrCapZone = 2
+    /** Top of the cap zone (bpm). */
+    val hrCap get() = io.github.michealsizemore1.top25widget.RunMath.hrBounds(hrMax, hrRest).let { b -> if (hrCapZone in 1..4) b[hrCapZone] - 1 else hrMax.toInt() }
+    @Volatile var capOver = false; private set
+    private var capOverSec = 0
+    private var capUnderSec = 0
+    private var capLastAlert = 0L
+
+    /** Is the cap on right now? Easy steps of easy workouts (and free runs, if chosen). */
+    fun capApplies(): Boolean {
+        if (hrCapMode == "off") return false
+        if (!hasWorkout || workoutDone) return hrCapMode == "all"
+        val s = currentStep ?: return false
+        val target = s.optString("target")
+        if (target == "hr") return s.optInt("zone") in 1..hrCapZone
+        if (target != "none") return false
+        // No target: only on easy-looking workouts, and not short strides/sprints.
+        if (s.optString("dur") == "time" && s.optInt("value") <= 120) return false
+        val name = workout?.optString("name").orEmpty().lowercase()
+        return listOf("easy", "recovery", "long", "planned run", "aerobic", "base").any { name.contains(it) }
+    }
+
+    private fun checkCap() {
+        if (!capApplies() || heartRate <= 0 || movingSeconds < 180 || (hasWorkout && !workoutDone && stepSeconds < 45)) {
+            capOverSec = 0; capOver = false; return
+        }
+        val cap = hrCap
+        if (heartRate > cap) { capOverSec++; capUnderSec = 0 } else { capUnderSec++; capOverSec = 0 }
+        val now = System.currentTimeMillis()
+        if (capOverSec >= 20 && now - capLastAlert > 60_000) { capLastAlert = now; capOver = true; onEvent?.invoke("hrcap") }
+        if (capOver && capUnderSec >= 10) { capOver = false; onEvent?.invoke("hrcap_ok") }
+    }
+
     @Volatile var criticalPower = 333        // watts
     @Volatile var hrMax = 185.0
     @Volatile var hrRest = 43.5
@@ -288,6 +324,7 @@ object Run {
         try { io.github.michealsizemore1.top25widget.Decoupling.compute(json)?.let { json.put("decoupling", it.toJson()) } } catch (e: Exception) { }
         RunStore.save(ctx, json)
         RunStore.clearCurrent(ctx)
+        RunTileService.refresh(ctx)
         state = State.IDLE
         chooseWorkout(null)   // next run starts as a free run unless a workout is picked
         nav = null
@@ -398,6 +435,7 @@ object Run {
             if (cad > 0) { cadSum += cad; cadCount++ }
             samples += intArrayOf(movingSeconds, (distance * 10).toInt(), hr, (speedNow * 100).toInt(), cad, strydPower, elapsedSeconds)
 
+            if (state == State.RUNNING) checkCap()
             if (hasWorkout && !workoutDone) checkWorkout()
             // Auto-lap every mile (during a workout, each step is a lap instead).
             else if (distance - lapStartMeters >= METERS_PER_MILE) lap(auto = true)

@@ -268,6 +268,8 @@ class RunService : Service(), SensorEventListener, LocationListener {
             "workout_done" -> longArrayOf(0, 700, 200, 700)
             "push" -> longArrayOf(0, 90, 90, 90, 90, 90)                // speed up / work harder
             "ease" -> longArrayOf(0, 600)                               // ease off
+            "hrcap" -> longArrayOf(0, 600, 200, 600)                    // over the easy-day heart-rate cap
+            "hrcap_ok" -> longArrayOf(0, 120)
             else -> longArrayOf(0, 200)
         }
         v.vibrate(VibrationEffect.createWaveform(pattern, -1))

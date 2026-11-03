@@ -92,6 +92,8 @@ object Speaker {
             "trail_done" -> say("Trail complete. " + miles(Run.distance) + " in " + duration(Run.movingSeconds))
             "push" -> if (alerts()) say(targetText(push = true))
             "ease" -> if (alerts()) say(targetText(push = false))
+            "hrcap" -> if (alerts()) say("Heart rate ${Run.heartRate}. Ease up. Stay under ${Run.hrCap}.")
+            "hrcap_ok" -> if (alerts()) say("Back under ${Run.hrCap}. Nice.")
         }
     }
 

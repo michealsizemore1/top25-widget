@@ -130,6 +130,8 @@ object RunSync {
         Run.hrMax = p.getFloat("hrMax", 185f).toDouble()
         Run.hrRest = p.getFloat("hrRest", 43.5f).toDouble()
         Run.strydCalibration = p.getFloat("cal", 1f).toDouble()
+        Run.hrCapMode = p.getString("hrCap", "easy") ?: "easy"
+        Run.hrCapZone = p.getInt("hrCapZone", 2)
     }
 
     fun pushAll(ctx: Context) {

@@ -85,6 +85,18 @@
             android:foregroundServiceType="location|health|connectedDevice" />
 
         <service
+            android:name=".run.RunTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_run"
+            android:label="Running"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher_run" />
+        </service>
+
+        <service
             android:name=".Top25TileService"
             android:exported="true"
             android:icon="@drawable/ic_stat_football"
