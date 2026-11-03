@@ -278,6 +278,7 @@ class RunActivity : Activity() {
         set("hr", hrText, if (Run.strapActive || (!Run.useStrap && Run.heartRate > 0)) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
+        set("textScale", when { prefs.getFloat("textScale", 1.25f) >= 1.45f -> "Extra large"; prefs.getFloat("textScale", 1.25f) >= 1.2f -> "Large"; else -> "Normal" } + " ▸")
         set("hrcap", when (Run.hrCapMode) { "off" -> "Off"; "all" -> "Easy days + free runs · under ${Run.hrCap}"; else -> "Easy days · under ${Run.hrCap}" })
         set("live", if (!prefs.getBoolean("liveOn", false)) "Off" else if (Run.isActive) "On · ${LiveTrack.status}" else "On")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
@@ -470,6 +471,13 @@ class RunActivity : Activity() {
         col.addView(row("live", "LiveTrack (GPS on, shares your run)") {
             if (prefs.getString("liveDb", "").isNullOrBlank()) flash("Set up LiveTrack in the phone app first")
             else prefs.edit().putBoolean("liveOn", !prefs.getBoolean("liveOn", false)).apply()
+        })
+        col.addView(row("textScale", "Text size") {
+            val opts = listOf(1f, 1.25f, 1.5f)
+            val cur = prefs.getFloat("textScale", 1.25f)
+            val next = opts[(opts.indexOfFirst { kotlin.math.abs(it - cur) < 0.01f } + 1) % opts.size]
+            prefs.edit().putFloat("textScale", next).apply()
+            startBuilt = false; liveBuilt = false; builtScreen = -1; render()
         })
         col.addView(row("hrcap", "Easy-day heart-rate cap") {
             val next = when (Run.hrCapMode) { "off" -> "easy"; "easy" -> "all"; else -> "off" }
@@ -1580,7 +1588,7 @@ class RunActivity : Activity() {
     private fun label(text: String, color: Int, size: Float, bold: Boolean = false) = TextView(this).apply {
         this.text = text
         setTextColor(color)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, RunViews.scaled(this@RunActivity, size))
         gravity = Gravity.CENTER
         if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)

@@ -79,6 +79,20 @@ class RunSettingsActivity : Activity() {
         switch("Bottom button: start · lap · double-press finish", "", RunSettings.bool(this, "bottomBtn")) { RunSettings.setBool(ctx, "bottomBtn", it) }
         switch("Gestures: double-tap = lap · hold = finish", "", RunSettings.bool(this, "gestures")) { RunSettings.setBool(ctx, "gestures", it) }
 
+        // ---- watch text size (same setting as on the watch)
+        col.addView(RunUi.card(this).apply {
+            val p = getSharedPreferences("runsettings", 0)
+            val k = p.getFloat("textScale", 1.25f)
+            val opts = listOf(1f to "Normal", 1.25f to "Large", 1.5f to "Extra large")
+            addView(RunUi.text(ctx, "Watch text size: " + (opts.minByOrNull { kotlin.math.abs(it.first - k) }?.second ?: "Large") + "  ›", RunUi.ACCENT, 15f, true))
+            addView(RunUi.text(ctx, "Labels and small text on the watch (big run numbers stay sized to fit)", RunUi.MUTED, 12f))
+            setOnClickListener {
+                android.app.AlertDialog.Builder(ctx).setTitle("Watch text size").setItems(opts.map { it.second }.toTypedArray()) { _, i ->
+                    p.edit().putFloat("textScale", opts[i].first).putLong("settingsAt", System.currentTimeMillis()).apply(); RunSettings.pushToWatch(ctx); render()
+                }.show()
+            }
+        })
+
         // ---- easy-day heart-rate cap
         col.addView(RunUi.card(this).apply {
             val p = getSharedPreferences("runsettings", 0)

@@ -99,10 +99,16 @@ object RunViews {
 
     fun date(ms: Long): String = SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault()).format(Date(ms))
 
+    /** Text size setting: small text is scaled up; big numbers stay as they are so they still fit. */
+    fun scaled(ctx: Context, size: Float): Float {
+        val k = ctx.getSharedPreferences("run", 0).getFloat("textScale", 1.25f).coerceIn(1f, 1.6f)
+        return if (size < 20f) minOf(size * k, 22f) else size
+    }
+
     fun label(ctx: Context, text: String, color: Int, size: Float, bold: Boolean = false) = TextView(ctx).apply {
         this.text = text
         setTextColor(color)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, scaled(ctx, size))
         gravity = Gravity.CENTER
         if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)

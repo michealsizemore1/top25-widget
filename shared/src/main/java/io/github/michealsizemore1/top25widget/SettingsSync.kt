@@ -28,6 +28,7 @@ object SettingsSync {
         "cp" to (T.INT to 333),
         "cal" to (T.FLOAT to 1f),
         "screens" to (T.STRING to ""),
+        "textScale" to (T.FLOAT to 1.25f),    // watch text size: 1 normal, 1.25 large, 1.5 extra large
         "keepOn" to (T.BOOL to true),
         "bottomBtn" to (T.BOOL to true),
         "gestures" to (T.BOOL to true),
