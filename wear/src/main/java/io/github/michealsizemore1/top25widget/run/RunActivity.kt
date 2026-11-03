@@ -179,6 +179,11 @@ class RunActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7) {   // texting permission for LiveTrack
+            if (grantResults.firstOrNull() != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                flash("Watch can't text — your phone will still send texts")
+            return
+        }
         RunService.start(this)
         render()
     }
