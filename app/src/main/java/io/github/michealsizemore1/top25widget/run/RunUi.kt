@@ -151,7 +151,39 @@ object RunUi {
     }
 
     /** The GPS route, drawn as a line (no map tiles). */
+    /** The route on a real street/trail map (OpenStreetMap), with start (green) and finish (red). */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     fun route(ctx: Context, track: org.json.JSONArray): View {
+        val n = track.length()
+        val stepBy = maxOf(1, n / 800)
+        val pts = org.json.JSONArray()
+        for (i in 0 until n step stepBy) track.optJSONArray(i)?.let { p -> pts.put(org.json.JSONArray(listOf(p.optDouble(0), p.optDouble(1)))) }
+        track.optJSONArray(n - 1)?.let { p -> pts.put(org.json.JSONArray(listOf(p.optDouble(0), p.optDouble(1)))) }
+        val html = """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+            <style>html,body,#m{margin:0;height:100%;background:#1c2421}</style></head><body><div id="m"></div><script>
+            var p=$pts;var m=L.map('m',{zoomControl:true,attributionControl:true,dragging:true,scrollWheelZoom:false});
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+            L.polyline(p,{color:'#111',weight:8,opacity:.55}).addTo(m);
+            var l=L.polyline(p,{color:'#d4e635',weight:5}).addTo(m);
+            L.circleMarker(p[0],{radius:7,color:'#fff',weight:2,fillColor:'#46c46e',fillOpacity:1}).addTo(m);
+            L.circleMarker(p[p.length-1],{radius:7,color:'#fff',weight:2,fillColor:'#e5484d',fillOpacity:1}).addTo(m);
+            m.fitBounds(l.getBounds(),{padding:[18,18]});</script></body></html>"""
+        return try {
+            android.webkit.WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                setBackgroundColor(CARD)
+                // Let the map pan/zoom inside the scrolling page.
+                setOnTouchListener { v, _ -> v.parent?.requestDisallowInterceptTouchEvent(true); false }
+                loadDataWithBaseURL("https://michealsizemore1.github.io/", html, "text/html", "utf-8", null)
+                layoutParams = android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 300))
+            }
+        } catch (e: Exception) { outline(ctx, track) }
+    }
+
+    /** Plain route outline (no map) — used if the map can't be shown. */
+    fun outline(ctx: Context, track: org.json.JSONArray): View {
         val w = ctx.resources.displayMetrics.widthPixels - dp(ctx, 64)
         val lats = (0 until track.length()).map { track.getJSONArray(it).optDouble(0) }
         val lons = (0 until track.length()).map { track.getJSONArray(it).optDouble(1) }
