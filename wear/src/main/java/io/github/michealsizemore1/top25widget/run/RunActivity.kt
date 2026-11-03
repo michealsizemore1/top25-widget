@@ -1426,14 +1426,14 @@ class RunActivity : Activity() {
         val sc = screens.optJSONObject(i) ?: return
         val layout = io.github.michealsizemore1.top25widget.RunFields.layout(sc.optString("layout", "6"))
         val fields = sc.optJSONArray("fields")
-        customBox.setPadding(0, w / 16, 0, w / 22)
-        customState = label("", C.PAUSE, 10f, true)
+        customBox.setPadding(0, w / 22, 0, w / 34)
+        customState = label("", C.PAUSE, 10f, true).apply { visibility = View.GONE }
         customBox.addView(customState, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         var k = 0
         layout.rows.forEachIndexed { r, count ->
             val edge = r == 0 || r == layout.rows.size - 1
             // Round screen: the top and bottom rows are narrower.
-            val inset = if (edge && layout.rows.size > 2) w / 6 else w / 14
+            val inset = if (edge && layout.rows.size > 2) w / 6 else w / 26
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(inset, dp(1), inset, dp(1))
@@ -1443,12 +1443,14 @@ class RunActivity : Activity() {
                 val cell = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
-                    if (count > 1) { background = rounded(C.CARD, 10); setPadding(dp(2), dp(1), dp(2), dp(1)) }
+                    if (count > 1) { background = rounded(C.CARD, 10); setPadding(dp(1), 0, dp(1), 0) }
                 }
-                val lab = label(io.github.michealsizemore1.top25widget.RunFields.name(key), C.MUTED, 9f)
+                val lab = label(io.github.michealsizemore1.top25widget.RunFields.name(key), C.MUTED, 9f).apply { includeFontPadding = false }
                 val value = TextView(this).apply {
                     gravity = Gravity.CENTER
                     maxLines = 1
+                    includeFontPadding = false   // digits fill the whole cell
+                    setPadding(0, 0, 0, 0)
                     setTextColor(Color.WHITE)
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                     setAutoSizeTextTypeUniformWithConfiguration(10, 80, 1, TypedValue.COMPLEX_UNIT_SP)
@@ -1458,9 +1460,10 @@ class RunActivity : Activity() {
                 row.addView(cell, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { if (count > 1) { marginStart = dp(2); marginEnd = dp(2) } })
                 cells += key to (lab to value)
             }
-            customBox.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f).apply { topMargin = dp(2) })
+            // The grid rows get a bit more height than the narrow top and bottom rows.
+            customBox.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, 0, if (count > 1) 1.2f else 1f).apply { topMargin = dp(1) })
         }
-        customDots = label("", C.DIM, 10f)
+        customDots = label("", C.DIM, 7f).apply { includeFontPadding = false }
         customBox.addView(customDots, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 
@@ -1469,7 +1472,7 @@ class RunActivity : Activity() {
         customBox.visibility = View.VISIBLE
         if (builtScreen != i) buildScreen(i)
         customState.text = stateText ?: ""
-        customState.visibility = if (stateText == null) View.INVISIBLE else View.VISIBLE
+        customState.visibility = if (stateText == null) View.GONE else View.VISIBLE
         customDots.text = order.indices.joinToString(" ") { if (it == this.page) "●" else "○" }
         cells.forEach { (key, views) ->
             val (v, color) = metric(key)

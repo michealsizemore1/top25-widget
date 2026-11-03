@@ -55,29 +55,103 @@ object LiveTrack {
         } catch (e: Exception) { "Watch couldn't text: ${e.message}" }
     }
 
-    /** Ask the phone to text; if the phone isn't reachable, the watch texts. */
+    /**
+     * Who sends the text: the phone when it's with you (Bluetooth), otherwise the watch itself over its
+     * own cell connection — right away, instead of a message to a phone at home that may arrive late.
+     */
     private fun textVia(ctx: Context, path: String, data: String, msg: String) {
         val app = ctx.applicationContext
-        RunSync.tellPhone(app, path, data.toByteArray()) { ok -> if (!ok && p(app).getBoolean("liveSms", true)) Thread { watchText(app, msg) }.start() }
+        Thread {
+            val phoneNearby = try {
+                com.google.android.gms.tasks.Tasks.await(com.google.android.gms.wearable.Wearable.getNodeClient(app).connectedNodes,
+                    5, java.util.concurrent.TimeUnit.SECONDS).any { it.isNearby }
+            } catch (e: Exception) { false }
+            if (phoneNearby) RunSync.tellPhone(app, path, data.toByteArray()) { ok ->
+                if (!ok && p(app).getBoolean("liveSms", true)) Thread { watchText(app, msg) }.start()
+            } else if (p(app).getBoolean("liveSms", true)) watchText(app, msg)
+        }.start()
     }
 
-    private fun send(ctx: Context, method: String, path: String, body: JSONObject) {
-        val url = "${db(ctx)}/live/${id(ctx)}$path.json" + if (method == "PATCH") "?x-http-method-override=PATCH" else ""
-        io.execute {
-            status = try {
-                val c = (URL(url).openConnection() as HttpURLConnection).apply {
-                    // PATCH isn't allowed by HttpURLConnection; Firebase accepts the override header.
-                    requestMethod = if (method == "PATCH") "POST" else method
-                    if (method == "PATCH") setRequestProperty("X-HTTP-Method-Override", "PATCH")
-                    doOutput = true; connectTimeout = 15_000; readTimeout = 15_000
-                    setRequestProperty("Content-Type", "application/json")
-                }
-                c.outputStream.use { it.write(body.toString().toByteArray()) }
-                val code = c.responseCode
-                c.disconnect()
-                if (code in 200..299) "Live" else "Server said $code"
-            } catch (e: Exception) { "No connection" }
+    // ---- Network: ask Wear OS for a real internet connection (LTE or Wi-Fi). Without this, a watch away
+    // from its phone may keep apps on the (gone) Bluetooth link, and posts pile up until you're home.
+    @Volatile private var net: android.net.Network? = null
+    private var netCb: android.net.ConnectivityManager.NetworkCallback? = null
+
+    private fun requestNet(ctx: Context) {
+        if (netCb != null) return
+        val cm = ctx.applicationContext.getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(n: android.net.Network) { net = n }
+            override fun onLost(n: android.net.Network) { if (net == n) net = null }
         }
+        try {
+            cm.requestNetwork(android.net.NetworkRequest.Builder()
+                .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addTransportType(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+                .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build(), cb)
+            netCb = cb
+        } catch (e: Exception) { }
+    }
+
+    private fun releaseNet(ctx: Context) {
+        val cb = netCb ?: return
+        netCb = null; net = null
+        try { ctx.applicationContext.getSystemService(android.net.ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } catch (e: Exception) { }
+    }
+
+    // ---- Sending: always the latest snapshot plus every map point not yet delivered (no backlog of old posts).
+    private val pendingPts = java.util.TreeMap<Int, JSONArray>()
+    @Volatile private var pendingNow: JSONObject? = null
+    @Volatile private var pendingReset = false
+    @Volatile private var dirty = false
+    private var dirtySince = 0L
+    private var lastFlushTry = 0L
+    private val flushing = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun http(ctx: Context, method: String, body: JSONObject): Boolean {
+        val url = URL("${db(ctx)}/live/${id(ctx)}.json" + if (method == "PATCH") "?x-http-method-override=PATCH" else "")
+        val c = ((net?.openConnection(url) ?: url.openConnection()) as HttpURLConnection).apply {
+            requestMethod = if (method == "PATCH") "POST" else method
+            if (method == "PATCH") setRequestProperty("X-HTTP-Method-Override", "PATCH")
+            doOutput = true; connectTimeout = 10_000; readTimeout = 10_000
+            setRequestProperty("Content-Type", "application/json")
+        }
+        return try {
+            c.outputStream.use { it.write(body.toString().toByteArray()) }
+            val code = c.responseCode
+            status = if (code in 200..299) "Live" else "Server said $code"
+            code in 200..299
+        } finally { c.disconnect() }
+    }
+
+    private fun flush(ctx: Context) {
+        lastFlushTry = System.currentTimeMillis()
+        if (!flushing.compareAndSet(false, true)) return
+        val app = ctx.applicationContext
+        io.execute {
+            try {
+                val snap = pendingNow ?: return@execute
+                if (pendingReset) {
+                    if (!http(app, "PUT", JSONObject().put("now", snap))) return@execute
+                    pendingReset = false
+                }
+                val body = JSONObject().put("now", snap)
+                val keys = ArrayList<Int>()
+                synchronized(pendingPts) { pendingPts.entries.take(400).forEach { (k, v) -> body.put("pts/$k", v); keys += k } }
+                if (http(app, "PATCH", body)) {
+                    synchronized(pendingPts) { keys.forEach { pendingPts.remove(it) } }
+                    if (pendingNow === snap && synchronized(pendingPts) { pendingPts.isEmpty() }) dirty = false
+                }
+            } catch (e: Exception) { status = "No connection" } finally { flushing.set(false) }
+        }
+    }
+
+    private fun queue(ctx: Context, snapshot: JSONObject, reset: Boolean = false) {
+        pendingNow = snapshot
+        if (reset) { pendingReset = true; synchronized(pendingPts) { pendingPts.clear() } }
+        if (!dirty) dirtySince = System.currentTimeMillis()
+        dirty = true
+        flush(ctx)
     }
 
     private fun now(ctx: Context, state: String) = JSONObject().apply {
@@ -93,14 +167,20 @@ object LiveTrack {
 
     /** Called every second by the run service. */
     fun onTick(ctx: Context) {
-        if (!enabled(ctx)) { if (runStart == 0L) status = "Off"; return }
         val t = System.currentTimeMillis()
+        // Undelivered updates (e.g. no signal for a bit): keep retrying every 5 s, for up to 30 minutes.
+        if (dirty && t - lastFlushTry > 5_000) {
+            if (t - dirtySince < 30 * 60_000L) flush(ctx) else dirty = false
+        }
+        if (!dirty && runStart == 0L && netCb != null) releaseNet(ctx)
+        if (!enabled(ctx)) { if (runStart == 0L) status = "Off"; return }
         if (Run.isActive) {
             if (runStart != Run.startMillis) {
                 // New run: reset the page and tell the phone to text the link.
                 runStart = Run.startMillis; ptIndex = 0; lastPost = t; lastState = Run.state
                 lastDist = Run.distance; lastMoveAt = t; warned = false; alerted = false
-                send(ctx, "PUT", "", JSONObject().put("now", now(ctx, "running")))
+                requestNet(ctx)
+                queue(ctx, now(ctx, "running"), reset = true)
                 textVia(ctx, "/cmd/livestart", "", "${name(ctx)} started a run. Follow live: ${link(ctx)}")
                 status = "Starting…"
                 return
@@ -130,8 +210,7 @@ object LiveTrack {
             if (t - lastPost >= 30_000 || Run.state != lastState) post(ctx, false)
         } else if (runStart != 0L) {
             // Run finished (or discarded).
-            send(ctx, "PATCH", "", JSONObject().put("now", now(ctx, "finished")
-                .put("dist", Math.round(lastDistM)).put("moving", lastMovingS)))
+            queue(ctx, now(ctx, "finished").put("dist", Math.round(lastDistM)).put("moving", lastMovingS))
             // Tell your contacts the run is over (with the totals).
             val mi = lastDistM / 1609.344
             val pace = if (mi > 0.05) (lastMovingS / mi).toInt().let { String.format(java.util.Locale.US, " (%d:%02d /mi)", it / 60, it % 60) } else ""
@@ -144,9 +223,8 @@ object LiveTrack {
     private fun post(ctx: Context, force: Boolean) {
         lastPost = System.currentTimeMillis(); lastState = Run.state
         val st = when (Run.state) { Run.State.PAUSED -> "paused"; Run.State.AUTO_PAUSED -> "stopped"; else -> "running" }
-        val body = JSONObject().put("now", now(ctx, st))
         if (Run.gpsFix && System.currentTimeMillis() - Run.gpsLastUpdate < 60_000)
-            body.put("pts/${ptIndex++}", JSONArray(listOf(Run.gpsLat, Run.gpsLon, Run.movingSeconds)))
-        send(ctx, "PATCH", "", body)
+            synchronized(pendingPts) { pendingPts[ptIndex++] = JSONArray(listOf(Run.gpsLat, Run.gpsLon, Run.movingSeconds)) }
+        queue(ctx, now(ctx, st))
     }
 }
