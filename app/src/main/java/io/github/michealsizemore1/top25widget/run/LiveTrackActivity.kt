@@ -83,6 +83,32 @@ object Live {
         try { nm.notify(title.hashCode(), n) } catch (e: SecurityException) { }
     }
 
+    /**
+     * A run with no saved route: if LiveTrack shared this same run, use the points it shared
+     * (every 30 s) as the route. Off the main thread. True if a route was added.
+     */
+    fun routeFromLive(ctx: Context, start: Long): Boolean {
+        if (db(ctx).isBlank()) return false
+        val run = PhoneRuns.read(ctx, start) ?: return false
+        if ((run.optJSONArray("track")?.length() ?: 0) > 5) return false
+        return try {
+            val url = "${db(ctx).let { if (it.startsWith("http")) it else "https://$it" }}/live/${id(ctx)}.json"
+            val c = (URL(url).openConnection() as HttpURLConnection).apply { connectTimeout = 15_000; readTimeout = 20_000 }
+            val o = JSONObject(c.inputStream.bufferedReader().readText())
+            if (o.optJSONObject("now")?.optLong("start") != start) return false
+            val pts = mutableListOf<org.json.JSONArray>()
+            when (val raw = o.opt("pts")) {
+                is org.json.JSONArray -> for (i in 0 until raw.length()) raw.optJSONArray(i)?.let { pts += it }
+                is JSONObject -> raw.keys().asSequence().sortedBy { it.toIntOrNull() ?: 0 }.forEach { k -> raw.optJSONArray(k)?.let { pts += it } }
+            }
+            if (pts.size < 3) return false
+            val track = org.json.JSONArray()
+            pts.forEach { p -> track.put(org.json.JSONArray(listOf(p.optDouble(0), p.optDouble(1), p.optDouble(2)))) }
+            PhoneRuns.save(ctx, run.put("track", track).put("trackFrom", "livetrack"))
+            true
+        } catch (e: Exception) { false }
+    }
+
     /** Writes a test record so you can check the link works. Off the main thread. */
     fun test(ctx: Context): String = try {
         val url = "${db(ctx).let { if (it.startsWith("http")) it else "https://$it" }}/live/${id(ctx)}.json"

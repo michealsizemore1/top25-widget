@@ -35,6 +35,7 @@ class RunDetailActivity : Activity() {
     }
 
     private var weatherTried = false
+    private var liveRouteTried = false
     private fun aqiColor(v: Int) = when { v <= 50 -> 0xFF22C55E.toInt(); v <= 100 -> 0xFFEAB308.toInt(); v <= 150 -> 0xFFF97316.toInt(); v <= 200 -> 0xFFEF4444.toInt(); else -> 0xFFA855F7.toInt() }
 
     private fun render(run: JSONObject) {
@@ -229,6 +230,11 @@ class RunDetailActivity : Activity() {
             })
         }
 
+        // No route saved on the watch? Use the points LiveTrack shared for this run, if any.
+        if ((run.optJSONArray("track")?.length() ?: 0) <= 5 && !liveRouteTried) {
+            liveRouteTried = true
+            Thread { if (Live.routeFromLive(this, start)) runOnUiThread { PhoneRuns.read(this, start)?.let { render(it) } } }.start()
+        }
         // Route.
         run.optJSONArray("track")?.takeIf { it.length() > 5 }?.let { track ->
             col.addView(RunUi.section(this, "ROUTE"))
