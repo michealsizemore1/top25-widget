@@ -248,10 +248,16 @@ class RunActivity : Activity() {
                 .take(6).joinToString("\n")
             visibility = if (w == null) View.GONE else View.VISIBLE
         }
-        set("stryd", Run.strydStatus +
+        // Green = connected (same as the heart-rate strap); orange = low battery or connected but quiet; gray = not connected.
+        val strydLive = Run.strydConnected && System.currentTimeMillis() - Run.strydLastUpdate < 5000
+        set("stryd", (if (Run.strydConnected) "✓ " else "") + Run.strydStatus +
                 (if (Run.strydConnected && Run.strydBattery >= 0) " · ${Run.strydBattery}%" else "") +
-                (if (Run.strydConnected && Run.strydPower > 0) " · ${Run.strydPower} W" else ""),
-            if (Run.strydConnected) (if (Run.strydBattery in 0..15) C.PAUSE else C.OK) else C.MUTED)
+                (if (strydLive && Run.strydPower > 0) " · ${Run.strydPower} W" else ""),
+            when {
+                !Run.strydConnected -> C.MUTED
+                Run.strydBattery in 0..15 -> C.PAUSE
+                else -> C.OK
+            })
         set("cp", "${Run.criticalPower} W ▸")
         set("hrmax", "${fmtHr(Run.hrMax)} bpm ▸")
         set("hrrest", "${fmtHr(Run.hrRest)} bpm ▸")
