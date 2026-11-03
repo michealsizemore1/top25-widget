@@ -373,7 +373,9 @@ object Run {
         if (startLoc == null && state == State.RUNNING) startLoc = doubleArrayOf(lat, lon)
         if (state == State.RUNNING || state == State.AUTO_PAUSED) {
             if (state == State.RUNNING) gpsPendingMeters += metersMoved
-            if (recordGpsTrack || source == Source.GPS || nav != null) track += doubleArrayOf(lat, lon, movingSeconds.toDouble(), elapsedSeconds.toDouble())
+            // GPS is only on when something needs it (GPS pace, map track, a trail, LiveTrack, or standing in
+            // for Stryd) — whenever it is, keep the route so the run has a map.
+            track += doubleArrayOf(lat, lon, movingSeconds.toDouble(), elapsedSeconds.toDouble())
             // Following a trail: off-route, turns, turnaround, finish.
             if (state == State.RUNNING) nav?.update(lat, lon)?.forEach { onEvent?.invoke(it) }
         }
