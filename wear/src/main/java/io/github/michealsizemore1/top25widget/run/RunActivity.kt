@@ -413,7 +413,7 @@ class RunActivity : Activity() {
             addView(label("GPS", C.MUTED, 10f).apply { setPadding(0, dp(4), 0, 0) })
             addView(label("", Color.WHITE, 12f, true).also { startValues["gps"] = it })
             setOnClickListener {
-                if (!Run.strydConnected) RunService.instance?.pairStryd()
+                if (!Run.strydConnected) RunService.instance?.let { s -> if (prefs.getLong("strydFreeUntil", 0L) > System.currentTimeMillis()) s.connectStryd() else s.pairStryd() }
                 if (Run.useStrap && !Run.strapActive) RunService.instance?.pairStrap()
             }
         })
@@ -446,6 +446,7 @@ class RunActivity : Activity() {
 
     private fun startRun() {
         if (!RunService.running) RunService.start(this)
+        RunService.instance?.connectStryd()   // a new run always wants the pod
         Run.start()
         // Open on your first data screen (the workout step and trail map are a swipe to the left).
         screen = Screen.LIVE; page = pageOrder().indexOf(100).takeIf { it >= 0 } ?: 1; liveBuilt = false
@@ -1565,6 +1566,8 @@ class RunActivity : Activity() {
 
     private fun finishRun() {
         val usedTrail = Run.nav != null
+        // Free the pod for 10 minutes so the Stryd app can sync it (Air Power etc.).
+        prefs.edit().putLong("strydFreeUntil", System.currentTimeMillis() + 10 * 60_000L).apply()
         val json = Run.finish(this)
         if (usedTrail) io.github.michealsizemore1.top25widget.TrailSync.choose(this, null, false, "watch")
         Speaker.finished(json)

@@ -99,7 +99,13 @@ class RunService : Service(), SensorEventListener, LocationListener {
 
         // Stryd footpod.
         if (Build.VERSION.SDK_INT < 31 || has(this, Manifest.permission.BLUETOOTH_CONNECT)) {
-            stryd = Stryd(this).also { it.start() }
+            // Just finished a run? Leave the pod free for a while so the Stryd app can sync it.
+            val until = getSharedPreferences("run", 0).getLong("strydFreeUntil", 0L)
+            if (System.currentTimeMillis() < until && !Run.isActive) {
+                Run.strydConnected = false
+                Run.strydStatus = "Left free for the Stryd app to sync · tap to connect"
+                handler.postDelayed({ connectStryd() }, until - System.currentTimeMillis())
+            } else stryd = Stryd(this).also { it.start() }
             if (Run.useStrap) strap = HrStrap(this).also { it.start() }
         } else { Run.strydStatus = "Allow Nearby devices"; Run.strapStatus = "Allow Nearby devices" }
 
@@ -128,7 +134,14 @@ class RunService : Service(), SensorEventListener, LocationListener {
     }
 
     /** Re-pair the Stryd (called from the start screen). */
-    fun pairStryd() { stryd?.pairNew() }
+    fun pairStryd() { if (stryd == null) connectStryd() else stryd?.pairNew() }
+
+    /** Connect to the pod now (ends the after-run free time). */
+    fun connectStryd() {
+        getSharedPreferences("run", 0).edit().putLong("strydFreeUntil", 0L).apply()
+        if (stryd != null) return
+        if (Build.VERSION.SDK_INT < 31 || has(this, Manifest.permission.BLUETOOTH_CONNECT)) stryd = Stryd(this).also { it.start() }
+    }
 
     /** Re-pair the chest strap (called from the start screen). */
     fun pairStrap() { strap?.pairNew() ?: applyHrMode() }
