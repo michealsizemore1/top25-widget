@@ -446,7 +446,8 @@ class RunActivity : Activity() {
     private fun startRun() {
         if (!RunService.running) RunService.start(this)
         Run.start()
-        screen = Screen.LIVE; page = 1; liveBuilt = false   // with a workout, page 1 is its step screen
+        // Open on your first data screen (the workout step and trail map are a swipe to the left).
+        screen = Screen.LIVE; page = pageOrder().indexOf(100).takeIf { it >= 0 } ?: 1; liveBuilt = false
         render()
     }
 
@@ -1374,9 +1375,11 @@ class RunActivity : Activity() {
         val target = s.optString("target")
         val (lo, hi) = Run.stepTarget
         val v = Run.stepValue()
-        val color = when (Run.stepStatus) { 0 -> C.OK; null -> Color.WHITE; else -> if (
+        // Easy step under the heart-rate cap: below the zone is fine — no "speed up".
+        val easyOk = Run.capApplies() && target == "hr" && Run.stepStatus == -1
+        val color = if (easyOk) C.OK else when (Run.stepStatus) { 0 -> C.OK; null -> Color.WHITE; else -> if (
             (target == "pace" && Run.stepStatus == 1) || (target != "pace" && Run.stepStatus == -1)) 0xFF4FA3E0.toInt() else C.STOP }
-        val hint = when (Run.stepStatus) {
+        val hint = if (easyOk) "easy ✓" else when (Run.stepStatus) {
             0 -> "on target"
             -1 -> if (target == "pace") "ease off" else "speed up"
             1 -> if (target == "pace") "speed up" else "ease off"
