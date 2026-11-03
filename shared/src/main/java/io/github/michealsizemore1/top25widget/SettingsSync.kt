@@ -44,6 +44,8 @@ object SettingsSync {
         "liveId" to (T.STRING to ""),         // private tracking id (part of the link)
         "liveName" to (T.STRING to ""),
         "liveStopMin" to (T.INT to 10),       // alert after this many minutes not moving (0 = off)
+        "liveContacts" to (T.STRING to ""),   // numbers to text (the watch texts them itself if the phone can't)
+        "liveSms" to (T.BOOL to true),
     )
 
     @Volatile private var applying = false

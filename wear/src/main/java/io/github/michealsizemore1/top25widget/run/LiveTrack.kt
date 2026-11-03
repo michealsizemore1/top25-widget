@@ -31,6 +31,33 @@ object LiveTrack {
     }
     private fun id(ctx: Context) = p(ctx).getString("liveId", "") ?: ""
     private fun stopMin(ctx: Context) = p(ctx).getInt("liveStopMin", 10)
+    private fun name(ctx: Context) = p(ctx).getString("liveName", "")?.takeIf { it.isNotBlank() } ?: "Micheal"
+    fun link(ctx: Context) = "https://michealsizemore1.github.io/ChatGPT-The-Master-App/livetrack.html#db=" +
+        android.net.Uri.encode(db(ctx).removePrefix("https://")) + "&id=" + id(ctx)
+    private fun contacts(ctx: Context) = (p(ctx).getString("liveContacts", "") ?: "").split(",", ";", "\n").map { it.trim() }
+        .filter { it.count(Char::isDigit) >= 7 }
+
+    /** Text from the watch itself (its own LTE number) — used when the phone can't be reached. */
+    @Volatile var smsStatus = ""
+    private fun watchText(ctx: Context, msg: String) {
+        val to = contacts(ctx)
+        if (to.isEmpty()) return
+        if (ctx.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            smsStatus = "Watch texting not allowed"; return
+        }
+        smsStatus = try {
+            val sms = if (android.os.Build.VERSION.SDK_INT >= 31) ctx.getSystemService(android.telephony.SmsManager::class.java)
+                else @Suppress("DEPRECATION") android.telephony.SmsManager.getDefault()
+            to.forEach { n -> sms.sendMultipartTextMessage(n, null, sms.divideMessage(msg), null, null) }
+            "Texted from watch"
+        } catch (e: Exception) { "Watch couldn't text: ${e.message}" }
+    }
+
+    /** Ask the phone to text; if the phone isn't reachable, the watch texts. */
+    private fun textVia(ctx: Context, path: String, data: String, msg: String) {
+        val app = ctx.applicationContext
+        RunSync.tellPhone(app, path, data.toByteArray()) { ok -> if (!ok && p(app).getBoolean("liveSms", true)) Thread { watchText(app, msg) }.start() }
+    }
 
     private fun send(ctx: Context, method: String, path: String, body: JSONObject) {
         val url = "${db(ctx)}/live/${id(ctx)}$path.json" + if (method == "PATCH") "?x-http-method-override=PATCH" else ""
@@ -72,7 +99,7 @@ object LiveTrack {
                 runStart = Run.startMillis; ptIndex = 0; lastPost = t; lastState = Run.state
                 lastDist = Run.distance; lastMoveAt = t; warned = false; alerted = false
                 send(ctx, "PUT", "", JSONObject().put("now", now(ctx, "running")))
-                RunSync.tellPhone(ctx, "/cmd/livestart", ByteArray(0)) { }
+                textVia(ctx, "/cmd/livestart", "", "${name(ctx)} started a run. Follow live: ${link(ctx)}")
                 status = "Starting…"
                 return
             }
@@ -92,7 +119,8 @@ object LiveTrack {
                     alerted = true
                     post(ctx, true)
                     val loc = if (Run.gpsFix) "${Run.gpsLat},${Run.gpsLon}" else ""
-                    RunSync.tellPhone(ctx, "/cmd/livealert", loc.toByteArray()) { }
+                    textVia(ctx, "/cmd/livealert", loc, "Alert from ${name(ctx)}'s run: no movement for ${stopMin(ctx)} minutes." +
+                        (if (loc.isNotEmpty()) " Last location: https://maps.google.com/?q=$loc" else "") + " Live: ${link(ctx)}")
                     Speaker.say("Alert sent.", force = true)
                 }
             }

@@ -351,6 +351,8 @@ class RunActivity : Activity() {
                 val on = !prefs.getBoolean("liveOn", false)
                 prefs.edit().putBoolean("liveOn", on).apply()
                 show(); flash(if (on) "LiveTrack on — contacts get your link at Start" else "LiveTrack off")
+                if (on && checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                    requestPermissions(arrayOf(android.Manifest.permission.SEND_SMS), 7)
             }
         })
 

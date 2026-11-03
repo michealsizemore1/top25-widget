@@ -155,8 +155,8 @@ class LiveTrackActivity : Activity() {
 
         col.addView(RunUi.section(this, "WHO GETS YOUR LINK"))
         val contactsIn = input("Phone numbers to text (comma-separated)", p().getString("liveContacts", "") ?: "", InputType.TYPE_CLASS_PHONE, "208-555-1234, 208-555-9876")
-        switch("Text them the link when a run starts", "Sent from this phone, like Garmin LiveTrack emails", Live.smsOn(this)) {
-            p().edit().putBoolean("liveSms", it).apply()
+        switch("Text them the link when a run starts", "Sent from this phone. If the watch can't reach the phone, the watch texts them over its own LTE.", Live.smsOn(this)) {
+            setPref { e -> e.putBoolean("liveSms", it) }
             if (it && checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(Manifest.permission.SEND_SMS), 2)
         }
         val stopOpts = listOf(0, 5, 10, 15, 20, 30)
@@ -173,8 +173,8 @@ class LiveTrackActivity : Activity() {
         col.addView(RunUi.button(this, "Save", RunUi.ACCENT) {
             var db = dbIn.text.toString().trim().removeSuffix("/")
             if (db.isNotBlank() && !db.startsWith("http")) db = "https://$db"
-            setPref { e -> e.putString("liveDb", db).putString("liveName", nameIn.text.toString().trim()) }
-            p().edit().putString("liveContacts", contactsIn.text.toString().trim()).apply()
+            setPref { e -> e.putString("liveDb", db).putString("liveName", nameIn.text.toString().trim())
+                .putString("liveContacts", contactsIn.text.toString().trim()) }
             if (db.isNotBlank()) Live.id(ctx)
             if (Live.smsOn(ctx) && Live.contacts(ctx).isNotEmpty() && checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED)
                 requestPermissions(arrayOf(Manifest.permission.SEND_SMS), 2)
