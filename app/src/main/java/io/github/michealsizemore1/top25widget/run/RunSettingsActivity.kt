@@ -75,7 +75,7 @@ class RunSettingsActivity : Activity() {
             RunSettings.setBool(ctx, "track", it)
         }
         switch("Chest strap (H10) with wrist backup", "Off = watch wrist sensor only", RunSettings.bool(this, "useStrap")) { RunSettings.setBool(ctx, "useStrap", it) }
-        switch("Keep watch screen on in Running", "", RunSettings.bool(this, "keepOn")) { RunSettings.setBool(ctx, "keepOn", it) }
+        switch("Keep watch screen on in BeyondStride", "", RunSettings.bool(this, "keepOn")) { RunSettings.setBool(ctx, "keepOn", it) }
         switch("Bottom button: start · lap · double-press finish", "", RunSettings.bool(this, "bottomBtn")) { RunSettings.setBool(ctx, "bottomBtn", it) }
         switch("Gestures: double-tap = lap · hold = finish", "", RunSettings.bool(this, "gestures")) { RunSettings.setBool(ctx, "gestures", it) }
 

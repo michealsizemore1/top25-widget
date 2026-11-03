@@ -59,7 +59,7 @@ class RunTileService : CoroutineTileService() {
         val p = getSharedPreferences("run", 0)
         val col = LayoutElementBuilders.Column.Builder().setWidth(expand())
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .addContent(TileUi.text("RUNNING", 12f, TileUi.ACCENT, bold = true))
+            .addContent(TileUi.text("BEYONDSTRIDE", 12f, TileUi.ACCENT, bold = true))
             .addContent(TileUi.spacer(4f))
 
         if (Run.isActive) {

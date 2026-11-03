@@ -47,7 +47,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_run"
             android:roundIcon="@drawable/ic_launcher_run"
-            android:label="Running"
+            android:label="BeyondStride"
             android:theme="@style/RunTheme"
             android:enableOnBackInvokedCallback="true"
             android:launchMode="singleTask"
@@ -88,7 +88,7 @@
             android:name=".run.RunTileService"
             android:exported="true"
             android:icon="@drawable/ic_launcher_run"
-            android:label="Running"
+            android:label="BeyondStride"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
             <intent-filter>
                 <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />

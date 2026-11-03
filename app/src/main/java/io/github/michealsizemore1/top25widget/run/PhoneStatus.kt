@@ -52,7 +52,7 @@ object PhoneStatus {
                 val p = String(data).split(",")
                 if (p.size >= 3) {
                     val nm = ctx.getSystemService(NotificationManager::class.java)
-                    nm.createNotificationChannel(android.app.NotificationChannel("runstatus", "Running", NotificationManager.IMPORTANCE_HIGH))
+                    nm.createNotificationChannel(android.app.NotificationChannel("runstatus", "BeyondStride", NotificationManager.IMPORTANCE_HIGH))
                     val nav = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("google.navigation:q=${p[0]},${p[1]}&mode=${p[2]}"))
                         .setPackage("com.google.android.apps.maps")
                     val pi = android.app.PendingIntent.getActivity(ctx, 904, nav, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)

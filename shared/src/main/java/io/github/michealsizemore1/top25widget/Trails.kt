@@ -100,7 +100,7 @@ object Trails {
             try {
                 val conn = (URL(server).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"; doOutput = true; connectTimeout = 15_000; readTimeout = 90_000
-                    setRequestProperty("User-Agent", "RunningApp/1.0 (personal Wear OS running app)")
+                    setRequestProperty("User-Agent", "BeyondStride/1.0 (personal Wear OS running app)")
                     setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 }
                 conn.outputStream.use { it.write(("data=" + URLEncoder.encode(query(lat, lon, radiusM), "UTF-8")).toByteArray()) }

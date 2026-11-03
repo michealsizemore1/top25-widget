@@ -324,7 +324,7 @@ class RunActivity : Activity() {
             background = rounded(C.CARD, 16)
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
         }
-        col.addView(label("Running", Color.WHITE, 20f, true))
+        col.addView(label("BeyondStride", Color.WHITE, 20f, true))
 
         // This week.
         val (meters, runs) = weekTotals()
@@ -480,7 +480,7 @@ class RunActivity : Activity() {
         col.addView(row("bottomBtn", "Bottom button: start · lap · double-press finish") {
             prefs.edit().putBoolean("bottomBtn", !prefs.getBoolean("bottomBtn", true)).apply()
         }.apply { addView(label("", C.DIM, 9f).also { startValues["keyLog"] = it }) })
-        col.addView(row("keepOn", "Keep screen on in Running") {
+        col.addView(row("keepOn", "Keep screen on in BeyondStride") {
             val on = !prefs.getBoolean("keepOn", true)
             prefs.edit().putBoolean("keepOn", on).apply()
             if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -490,7 +490,7 @@ class RunActivity : Activity() {
             prefs.edit().putBoolean("gestures", !prefs.getBoolean("gestures", true)).apply()
         }.apply {
             addView(label("Anywhere on a run screen: double-tap for a lap (next step in a workout); press and hold " +
-                "about a second to pause and open Finish (big SAVE / RESUME). Tip: set the orange Quick button to open Running.", C.MUTED, 9f))
+                "about a second to pause and open Finish (big SAVE / RESUME). Tip: set the orange Quick button to open BeyondStride.", C.MUTED, 9f))
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
@@ -773,7 +773,7 @@ class RunActivity : Activity() {
             return
         }
         if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            trailStatus = "Allow location for Running to find trails"; return
+            trailStatus = "Allow location for BeyondStride to find trails"; return
         }
         trailStatus = "Finding your location…"
         val lm = getSystemService(android.location.LocationManager::class.java)
@@ -1002,7 +1002,7 @@ class RunActivity : Activity() {
         if (WatchWorkouts.library(this).isNotEmpty()) col.addView(label("LIBRARY", C.MUTED, 10f, true).apply { setPadding(0, dp(10), 0, 0) })
         WatchWorkouts.library(this).forEach { col.addView(item(it.optString("name"), outline(it), it)) }
         if (WatchWorkouts.library(this).isEmpty())
-            col.addView(label("Build workouts in the phone's Running app — they show up here.", C.DIM, 11f).apply { setPadding(0, dp(10), 0, 0) })
+            col.addView(label("Build workouts in BeyondStride on the phone — they show up here.", C.DIM, 11f).apply { setPadding(0, dp(10), 0, 0) })
         root.removeAllViews()
         root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
     }

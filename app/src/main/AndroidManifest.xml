@@ -29,7 +29,7 @@
             android:exported="true"
             android:icon="@drawable/ic_launcher_run"
             android:roundIcon="@drawable/ic_launcher_run"
-            android:label="Running"
+            android:label="BeyondStride"
             android:launchMode="singleTask"
             android:taskAffinity="io.github.michealsizemore1.top25widget.running">
             <intent-filter>

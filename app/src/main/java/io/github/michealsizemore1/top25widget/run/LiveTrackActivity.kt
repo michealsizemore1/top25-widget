@@ -49,7 +49,7 @@ object Live {
         val to = contacts(ctx)
         if (to.isEmpty()) return
         if (ctx.checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            notify(ctx, "LiveTrack: couldn't text your contacts", "Allow SMS for Running in LiveTrack settings", Intent(ctx, LiveTrackActivity::class.java)); return
+            notify(ctx, "LiveTrack: couldn't text your contacts", "Allow SMS for BeyondStride in LiveTrack settings", Intent(ctx, LiveTrackActivity::class.java)); return
         }
         val sms = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
         to.forEach { n -> try { sms.sendMultipartTextMessage(n, null, sms.divideMessage(msg), null, null) } catch (e: Exception) { } }

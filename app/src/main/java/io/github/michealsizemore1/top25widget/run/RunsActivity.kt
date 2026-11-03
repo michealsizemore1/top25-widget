@@ -87,7 +87,7 @@ class RunsActivity : Activity() {
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(RunUi.text(ctx, "Running", Color.WHITE, 28f, true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(RunUi.text(ctx, "BeyondStride", Color.WHITE, 28f, true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             addView(RunUi.button(ctx, "Settings", RunUi.CARD, Color.WHITE) {
                 startActivity(Intent(ctx, RunSettingsActivity::class.java))
             })
