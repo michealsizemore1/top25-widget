@@ -250,6 +250,18 @@ class RunDetailActivity : Activity() {
             })
         }
 
+        // Stryd connection details (for troubleshooting).
+        val fb = run.optInt("gpsFallbackSeconds")
+        val log = run.optJSONArray("strydLog")
+        if (fb > 0 || log != null) {
+            col.addView(RunUi.section(this, "STRYD CONNECTION"))
+            col.addView(RunUi.card(this).apply {
+                if (fb > 0) addView(RunUi.text(ctx, "GPS stood in for Stryd for ${RunMath.clock(fb)} of this run.", 0xFFF2C94C.toInt(), 13f, true))
+                log?.let { l -> addView(RunUi.text(ctx, (0 until l.length()).joinToString("\n") { l.optString(it) }, RunUi.MUTED, 11f)
+                    .apply { setPadding(0, dp(6), 0, 0) }) }
+            })
+        }
+
         col.addView(RunUi.text(this, "Share run file (TCX)", RunUi.ACCENT, 14f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(24), 0, 0)
