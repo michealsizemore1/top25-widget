@@ -850,6 +850,23 @@ class RunActivity : Activity() {
             col.addView(card("Out & back", String.format(java.util.Locale.US, "%.2f mi · turn around at the end", mi * 2), C.ACCENT) { choose(true) })
             col.addView(card("One way", String.format(java.util.Locale.US, "%.2f mi", mi), C.ACCENT) { choose(false) })
         }
+        // Topo map for this trail: download now (e.g. at home on Wi-Fi), saved on the watch.
+        if (TrailTiles.enabled(this)) {
+            val ready = TrailTiles.isSaved(this, t)
+            val mapCard = card(if (ready) "Map saved ✓" else "Download map", if (ready) "Works on the trail with no signal" else "Do this at home on Wi-Fi", if (ready) 0xFF46C46E.toInt() else C.ACCENT) {
+                TrailTiles.ensure(this, t, force = true); flash("Downloading map…")
+            }
+            col.addView(mapCard)
+            // Live progress while this screen is open.
+            val tick = object : Runnable { override fun run() {
+                if (!mapCard.isAttachedToWindow) return
+                if (TrailTiles.readyFor == t.id) (mapCard.getChildAt(0) as? TextView)?.apply { text = "Map saved ✓"; setTextColor(0xFF46C46E.toInt()) }
+                (mapCard.getChildAt(1) as? TextView)?.text = if (TrailTiles.readyFor == t.id) "Saved — works with no signal"
+                    else TrailTiles.status.ifBlank { "Do this at home on Wi-Fi" }
+                handler.postDelayed(this, 1000)
+            } }
+            handler.postDelayed(tick, 1000)
+        }
         col.addView(card("Directions to start", "Google Maps", Color.WHITE) { showDirections(t) })
         val isSaved = io.github.michealsizemore1.top25widget.Courses.isSaved(this, t.id)
         col.addView(card(if (isSaved) "★ Saved course" else "☆ Save course", if (isSaved) "Tap to remove" else "Also saves on the phone", 0xFFD4E635.toInt()) {

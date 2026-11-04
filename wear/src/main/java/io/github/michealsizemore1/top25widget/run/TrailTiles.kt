@@ -65,9 +65,12 @@ object TrailTiles {
     }
 
     /** Download the map for this trail (skips tiles already saved). Safe to call often. */
-    fun ensure(ctx: Context, t: Trail) {
+    /** Is the whole map for this trail saved? */
+    fun isSaved(ctx: Context, t: Trail) = readyFor == t.id || tilesFor(t).all { (z, x, y) -> file(ctx, z, x, y).exists() }
+
+    fun ensure(ctx: Context, t: Trail, force: Boolean = false) {
         if (!enabled(ctx) || readyFor == t.id || workingOn == t.id) return
-        if (lastTryId == t.id && System.currentTimeMillis() - lastTry < 60_000) return
+        if (!force && lastTryId == t.id && System.currentTimeMillis() - lastTry < 60_000) return
         lastTryId = t.id; lastTry = System.currentTimeMillis()
         val app = ctx.applicationContext
         val tiles = tilesFor(t)
