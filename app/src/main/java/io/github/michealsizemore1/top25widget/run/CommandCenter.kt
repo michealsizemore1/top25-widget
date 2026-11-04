@@ -11,58 +11,78 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Text summary of a run, for the Command Center notes. */
+/** Text summary of a run, for the Command Center notes: short sections, one fact per line. */
 object Summary {
-    fun zoneLine(secs: JSONArray?, prefix: String): String? {
-        if (secs == null) return null
+    private val dec = io.github.michealsizemore1.top25widget.Decoupling
+
+    /** "Z2 53:41 (89%)" lines for zones you actually spent time in. */
+    fun zoneLines(secs: JSONArray?): List<String> {
+        if (secs == null) return emptyList()
         val total = (0 until secs.length()).sumOf { secs.optInt(it) }
-        if (total <= 0) return null
-        return prefix + (0 until minOf(5, secs.length())).joinToString(" · ") { "Z${it + 1} ${RunMath.clock(secs.optInt(it))}" }
+        if (total <= 0) return emptyList()
+        return (0 until minOf(5, secs.length())).filter { secs.optInt(it) > 0 }.map { z ->
+            "  Z${z + 1}  ${RunMath.clock(secs.optInt(z))}  (${Math.round(secs.optInt(z) * 100.0 / total)}%)"
+        }
     }
 
     fun notes(ctx: Context, run: JSONObject): String {
-        val lines = mutableListOf<String>()
+        val sections = mutableListOf<List<String>>()
+        fun section(title: String, lines: List<String>) { if (lines.isNotEmpty()) sections += listOf(title) + lines }
+
         run.optJSONObject("trail")?.let { t ->
-            lines += "Trail: ${t.optString("name")}" + (if (t.optBoolean("outAndBack")) " (out & back)" else "") +
-                (if (t.optBoolean("completed")) " ✓" else "")
+            section("TRAIL", listOf(t.optString("name") + (if (t.optBoolean("outAndBack")) " (out & back)" else "") +
+                (if (t.optBoolean("completed")) " ✓ completed" else "")))
         }
-        if (run.optInt("np") > 0) {
-            var l = "Power: avg ${run.optInt("avgPower")} W · NP ${run.optInt("np")} W"
-            if (run.optInt("cp") > 0) l += " · IF ${"%.2f".format(Locale.US, run.optDouble("intensity"))} · Stress ${run.optInt("stress")} (CP ${run.optInt("cp")})"
-            lines += l
-        }
-        if (run.optInt("avgHr") > 0) lines += "Heart rate: avg ${run.optInt("avgHr")} · max ${run.optInt("maxHr")} bpm (" +
-            (if (run.optString("hrSource") == "strap") "chest strap" else "wrist") + ")"
-        zoneLine(run.optJSONArray("hrZoneSeconds"), "HR zones: ")?.let { lines += it }
-        io.github.michealsizemore1.top25widget.Decoupling.of(run)?.let { d -> io.github.michealsizemore1.top25widget.Decoupling.line(d).takeIf { it.isNotBlank() }?.let { lines += it } }
-        zoneLine(run.optJSONArray("zoneSeconds"), "Power zones: ")?.let { lines += it }
-        run.optDouble("avgStride").takeIf { !it.isNaN() && it > 0 }?.let { lines += "Avg stride ${"%.2f".format(Locale.US, it)} m" }
-        val laps = run.optJSONArray("laps")
-        if (laps != null && laps.length() > 1) {
-            lines += "Splits: " + (0 until laps.length()).joinToString(", ") { i ->
-                val l = laps.getJSONObject(i)
-                RunMath.paceFor(l.optInt("sec"), l.optDouble("m")) + (l.optInt("hr").takeIf { it > 0 }?.let { "@$it" } ?: "")
+
+        if (run.optInt("avgHr") > 0) section("HEART RATE (" + (if (run.optString("hrSource") == "strap") "chest strap" else "wrist") + ")",
+            listOf("Avg ${run.optInt("avgHr")} · Max ${run.optInt("maxHr")} bpm") + zoneLines(run.optJSONArray("hrZoneSeconds")))
+
+        if (run.optInt("np") > 0) section("POWER" + (if (run.optInt("cp") > 0) " (CP ${run.optInt("cp")})" else ""), buildList {
+            add("Avg ${run.optInt("avgPower")} W · NP ${run.optInt("np")} W")
+            if (run.optInt("cp") > 0) add("IF ${"%.2f".format(Locale.US, run.optDouble("intensity"))} · Stress ${run.optInt("stress")}")
+            addAll(zoneLines(run.optJSONArray("zoneSeconds")))
+        })
+
+        dec.of(run)?.let { d ->
+            d.main?.let { m ->
+                section("AEROBIC DECOUPLING", listOfNotNull(
+                    "${dec.text(m)} · ${dec.rating(m)}" + (if (!d.steady) " (uneven effort)" else ""),
+                    listOfNotNull(d.pwHr?.let { "Pw:HR ${dec.text(it)}" }, d.paHr?.let { "Pa:HR ${dec.text(it)}" }).joinToString(" · ").ifBlank { null },
+                    "HR ${d.hr1} → ${d.hr2} over ${d.minutes} min",
+                ))
             }
         }
-        run.optJSONObject("stryd")?.let { s ->
-            val parts = listOfNotNull(
-                s.optDouble("groundTime").takeIf { !it.isNaN() }?.let { "GCT ${it.toInt()} ms" },
-                s.optDouble("oscillation").takeIf { !it.isNaN() }?.let { "VO %.1f cm".format(Locale.US, it) },
-                s.optDouble("legSpring").takeIf { !it.isNaN() }?.let { "LSS %.1f kN/m".format(Locale.US, it) },
-                s.optDouble("formPower").takeIf { !it.isNaN() }?.let { "Form power ${it.toInt()} W" },
-                s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { "Air power %.1f%%".format(Locale.US, it) },
-                s.optDouble("rss").takeIf { !it.isNaN() }?.let { "RSS ${it.toInt()}" },
-            )
-            if (parts.isNotEmpty()) lines += "Stryd: " + parts.joinToString(" · ")
-        }
-        run.optJSONObject("weather")?.takeIf { it.has("windMph") }?.let { w ->
-            lines += "Wind: " + Math.round(w.optDouble("windMph")) + " mph" +
-                (if (w.has("windDir")) " from " + RunWeather.compass(w.optInt("windDir")) else "") +
-                (if (w.has("gustMph")) " (gusts ${w.optInt("gustMph")})" else "") +
-                (if (w.has("airPct") && run.optJSONObject("stryd")?.has("airPowerPct") != true) " · est. air power ${w.optDouble("airPct")}%" else "")
-        }
-        lines += "Recorded on Galaxy Watch (" + (if (run.optString("source") == "gps") "GPS" else "Stryd") + " pace/distance)"
-        return lines.joinToString("\n")
+
+        val laps = run.optJSONArray("laps")
+        if (laps != null && laps.length() > 1) section("SPLITS (pace @ HR)", (0 until laps.length()).map { i ->
+            val l = laps.getJSONObject(i)
+            "  ${i + 1}  " + String.format(Locale.US, "%.2f mi", l.optDouble("m") / RunMath.METERS_PER_MILE) + "  " +
+                RunMath.paceFor(l.optInt("sec"), l.optDouble("m")) + (l.optInt("hr").takeIf { it > 0 }?.let { " @ $it" } ?: "")
+        })
+
+        val w = run.optJSONObject("weather")
+        section("CONDITIONS", listOfNotNull(
+            w?.takeIf { it.has("windMph") }?.let { "Wind ${Math.round(it.optDouble("windMph"))} mph" +
+                (if (it.has("windDir")) " from " + RunWeather.compass(it.optInt("windDir")) else "") +
+                (if (it.has("gustMph")) ", gusts ${it.optInt("gustMph")}" else "") },
+            w?.takeIf { it.has("airPct") && run.optJSONObject("stryd")?.has("airPowerPct") != true }?.let { "Air power ${it.optDouble("airPct")}% (est.)" },
+            run.optDouble("elevGain").takeIf { !it.isNaN() }?.let { "Climb ${Math.round(it * 3.28084)} ft" },
+        ))
+
+        val s = run.optJSONObject("stryd")
+        section("FORM", listOfNotNull(
+            run.optDouble("avgStride").takeIf { !it.isNaN() && it > 0 }?.let { "Avg stride ${"%.2f".format(Locale.US, it)} m" },
+            s?.optDouble("groundTime")?.takeIf { !it.isNaN() }?.let { "Ground contact ${it.toInt()} ms" },
+            s?.optDouble("oscillation")?.takeIf { !it.isNaN() }?.let { "Vertical oscillation %.1f cm".format(Locale.US, it) },
+            s?.optDouble("legSpring")?.takeIf { !it.isNaN() }?.let { "Leg spring %.1f kN/m".format(Locale.US, it) },
+            s?.optDouble("formPower")?.takeIf { !it.isNaN() }?.let { "Form power ${it.toInt()} W" },
+            s?.optDouble("airPowerPct")?.takeIf { !it.isNaN() }?.let { "Air power %.1f%% (Stryd)".format(Locale.US, it) },
+            s?.optDouble("rss")?.takeIf { !it.isNaN() }?.let { "Stryd RSS ${it.toInt()}" },
+        ))
+
+        // (This last line also tells the Command Center the notes were written by the app, so they can be refreshed.)
+        val footer = "Recorded on Galaxy Watch (" + (if (run.optString("source") == "gps") "GPS" else "Stryd") + " pace/distance)"
+        return (sections.map { it.joinToString("\n") } + footer).joinToString("\n\n")
     }
 }
 
