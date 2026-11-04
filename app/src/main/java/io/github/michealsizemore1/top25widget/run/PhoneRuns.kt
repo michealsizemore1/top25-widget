@@ -56,6 +56,11 @@ object PhoneRuns {
     fun setSentToCommandCenter(ctx: Context, start: Long) = flags(ctx).edit().putBoolean("cc_$start", true).apply()
 
     fun title(json: JSONObject): String {
+        // Planned workout's name (e.g. "Easy Run 7 Miles"), same as in your plan.
+        json.optJSONObject("workout")?.optString("name")?.takeIf { it.isNotBlank() && it != "Free run" }?.let { w ->
+            json.optJSONObject("trail")?.optString("name")?.takeIf { it.isNotBlank() }?.let { return "$w · $it" }
+            return w
+        }
         json.optJSONObject("trail")?.optString("name")?.takeIf { it.isNotBlank() }?.let { return it }
         val h = java.util.Calendar.getInstance().apply { timeInMillis = json.optLong("start") }.get(java.util.Calendar.HOUR_OF_DAY)
         return when (h) { in 4..11 -> "Morning Run"; in 12..16 -> "Afternoon Run"; in 17..20 -> "Evening Run"; else -> "Night Run" }

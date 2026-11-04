@@ -21,7 +21,7 @@ object Summary {
         val total = (0 until secs.length()).sumOf { secs.optInt(it) }
         if (total <= 0) return emptyList()
         return (0 until minOf(5, secs.length())).filter { secs.optInt(it) > 0 }.map { z ->
-            "  Z${z + 1}  ${RunMath.clock(secs.optInt(z))}  (${Math.round(secs.optInt(z) * 100.0 / total)}%)"
+            "Z${z + 1} · ${RunMath.clock(secs.optInt(z))} · ${Math.round(secs.optInt(z) * 100.0 / total)}%"
         }
     }
 
@@ -54,10 +54,10 @@ object Summary {
         }
 
         val laps = run.optJSONArray("laps")
-        if (laps != null && laps.length() > 1) section("SPLITS (pace @ HR)", (0 until laps.length()).map { i ->
+        if (laps != null && laps.length() > 1) section("SPLITS", (0 until laps.length()).map { i ->
             val l = laps.getJSONObject(i)
-            "  ${i + 1}  " + String.format(Locale.US, "%.2f mi", l.optDouble("m") / RunMath.METERS_PER_MILE) + "  " +
-                RunMath.paceFor(l.optInt("sec"), l.optDouble("m")) + (l.optInt("hr").takeIf { it > 0 }?.let { " @ $it" } ?: "")
+            "${i + 1}. " + String.format(Locale.US, "%.2f mi", l.optDouble("m") / RunMath.METERS_PER_MILE) + " · " +
+                RunMath.paceFor(l.optInt("sec"), l.optDouble("m")) + (l.optInt("hr").takeIf { it > 0 }?.let { " @ $it bpm" } ?: "")
         })
 
         val w = run.optJSONObject("weather")
