@@ -82,16 +82,28 @@ class TrailMapView(ctx: Context) : View(ctx) {
             else -> nav.trail.name.uppercase(Locale.US).take(22)
         }
         text.color = if (nav.offRoute) 0xFFE5484D.toInt() else 0xFFD4E635.toInt()
-        c.drawText(top, cx, h * 0.17f, text)
-        text.color = Color.WHITE; text.textSize = 20 * density
-        c.drawText(String.format(Locale.US, "%.2f mi left", nav.remaining / 1609.344), cx, h * 0.83f, text)
-        text.textSize = 12 * density; text.color = 0xFF9AA3A0.toInt()
+        fitted(c, top, cx, h * 0.19f, 13 * density, w, h)
+        text.color = Color.WHITE
+        fitted(c, String.format(Locale.US, "%.2f mi left", nav.remaining / 1609.344), cx, h * 0.82f, 20 * density, w, h)
+        text.color = 0xFF9AA3A0.toInt()
         val sub = buildList {
             nav.nextTurn?.let { (d, dir) -> if (d < 400) add("${dir.replaceFirstChar { it.uppercase() }} in ${feet(d)}") }
             nav.climbLeft().takeIf { it > 5 }?.let { add("${(it * 3.28084).toInt()} ft climb left") }
             if (nav.outAndBack && nav.progress < nav.turnaroundM) add("turn around in " + String.format(Locale.US, "%.2f mi", (nav.turnaroundM - nav.progress) / 1609.344))
         }.take(2).joinToString(" · ")
-        c.drawText(sub, cx, h * 0.91f, text)
+        fitted(c, sub, cx, h * 0.895f, 12 * density, w, h)
+    }
+
+    /** Draws text centered at (x, y), shrinking it so it fits inside the round screen at that height. */
+    private fun fitted(c: Canvas, s: String, x: Float, y: Float, size: Float, w: Float, h: Float) {
+        if (s.isEmpty()) return
+        text.textSize = size
+        val r = min(w, h) / 2
+        val dy = kotlin.math.abs(y - text.textSize * 0.35f - h / 2) + text.textSize * 0.5f   // the text's edge farthest from center
+        val room = 2 * kotlin.math.sqrt(maxOf(0f, r * r - dy * dy)) * 0.9f
+        val need = text.measureText(s)
+        if (need > room && need > 0) text.textSize = maxOf(size * 0.55f, size * room / need)
+        c.drawText(s, x, y, text)
     }
 
     private fun feet(m: Double) = if (m < 300) "${(m * 3.28084 / 10).toInt() * 10} ft" else String.format(Locale.US, "%.2f mi", m / 1609.344)
