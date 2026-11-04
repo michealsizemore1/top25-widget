@@ -23,6 +23,14 @@ class TrailMapView(ctx: Context) : View(ctx) {
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.WHITE }
+    /** Night-style map: colors inverted and dimmed (light paper → dark ground, lines stay visible). */
+    private val mapPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = android.graphics.ColorMatrixColorFilter(floatArrayOf(
+            -0.42f, -0.08f, -0.08f, 0f, 150f,
+            -0.08f, -0.42f, -0.08f, 0f, 150f,
+            -0.08f, -0.08f, -0.42f, 0f, 155f,
+            0f, 0f, 0f, 1f, 0f))
+    }
 
     /** How many meters from the center to the edge of the screen. */
     var radiusM = 300.0
@@ -41,6 +49,23 @@ class TrailMapView(ctx: Context) : View(ctx) {
         val k = cos(Math.toRadians(center[0])) * 111320.0
         fun x(p: DoubleArray) = cx + ((p[1] - center[1]) * k).toFloat() * scale
         fun y(p: DoubleArray) = cy - ((p[0] - center[0]) * 110540.0).toFloat() * scale
+
+        // Topo map underneath (saved on the watch), darkened so the trail and arrow stand out.
+        if (TrailTiles.enabled(context)) {
+            val mpp = 1.0 / scale
+            val z = TrailTiles.zoomFor(mpp, center[0])
+            val halfLon = (w / 2 / scale) / k; val halfLat = (h / 2 / scale) / 110540.0
+            val x0 = kotlin.math.floor(TrailTiles.tileX(center[1] - halfLon, z)).toInt()
+            val x1 = kotlin.math.floor(TrailTiles.tileX(center[1] + halfLon, z)).toInt()
+            val y0 = kotlin.math.floor(TrailTiles.tileY(center[0] + halfLat, z)).toInt()
+            val y1 = kotlin.math.floor(TrailTiles.tileY(center[0] - halfLat, z)).toInt()
+            if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 36) for (tx in x0..x1) for (ty in y0..y1) {
+                val bmp = TrailTiles.bitmap(context, z, tx, ty) ?: continue
+                val nw = doubleArrayOf(TrailTiles.latOf(ty.toDouble(), z), TrailTiles.lonOf(tx.toDouble(), z))
+                val se = doubleArrayOf(TrailTiles.latOf(ty + 1.0, z), TrailTiles.lonOf(tx + 1.0, z))
+                c.drawBitmap(bmp, null, android.graphics.RectF(x(nw), y(nw), x(se), y(se)), mapPaint)
+            }
+        }
 
         // Trail: done part dim, the rest bright.
         val done = Path(); val ahead = Path()

@@ -238,7 +238,8 @@ class RunActivity : Activity() {
         startValues["trailLine"]?.apply {
             val n = Run.nav
             text = if (n == null) "" else "Trail: ${n.trail.name} · " + String.format(java.util.Locale.US, "%.1f mi", n.total / 1609.344) +
-                (if (n.outAndBack) " out & back" else "")
+                (if (n.outAndBack) " out & back" else "") +
+                (if (n != null && TrailTiles.enabled(this@RunActivity) && TrailTiles.status.isNotBlank()) "\n" + TrailTiles.status else "")
             visibility = if (n == null) View.GONE else View.VISIBLE
         }
         set("workout", (Run.workout?.optString("name") ?: "Free run") + " ›", if (Run.workout != null) Color.WHITE else C.ACCENT)
@@ -278,6 +279,7 @@ class RunActivity : Activity() {
         set("hr", hrText, if (Run.strapActive || (!Run.useStrap && Run.heartRate > 0)) C.OK else if (Run.heartRate > 0) C.PAUSE else C.MUTED)
         set("autopause", if (Run.autoPause) "On" else "Off")
         set("track", if (Run.recordGpsTrack) "On" else "Off")
+        set("trailMap", if (prefs.getBoolean("trailMapTiles", true)) "On" else "Off")
         set("textScale", when { prefs.getFloat("textScale", 1.25f) >= 1.45f -> "Extra large"; prefs.getFloat("textScale", 1.25f) >= 1.2f -> "Large"; else -> "Normal" } + " ▸")
         set("hrcap", when (Run.hrCapMode) { "off" -> "Off"; "all" -> "Easy days + free runs · under ${Run.hrCap}"; else -> "Easy days · under ${Run.hrCap}" })
         set("live", if (!prefs.getBoolean("liveOn", false)) "Off" else if (Run.isActive) "On · ${LiveTrack.status}" else "On")
@@ -479,6 +481,9 @@ class RunActivity : Activity() {
             val next = opts[(opts.indexOfFirst { kotlin.math.abs(it - cur) < 0.01f } + 1) % opts.size]
             prefs.edit().putFloat("textScale", next).apply()
             startBuilt = false; liveBuilt = false; builtScreen = -1; render()
+        })
+        col.addView(row("trailMap", "Topo map on trail screen (saved on watch)") {
+            prefs.edit().putBoolean("trailMapTiles", !prefs.getBoolean("trailMapTiles", true)).apply()
         })
         col.addView(row("hrcap", "Easy-day heart-rate cap") {
             val next = when (Run.hrCapMode) { "off" -> "easy"; "easy" -> "all"; else -> "off" }
@@ -835,7 +840,7 @@ class RunActivity : Activity() {
             })
         } else showProfile()
         fun choose(outAndBack: Boolean) {
-            Run.chooseTrail(t, outAndBack)
+            Run.chooseTrail(t, outAndBack); TrailTiles.ensure(this, t)   // save the topo map now (home Wi-Fi)
             io.github.michealsizemore1.top25widget.TrailSync.choose(this, t, outAndBack, "watch")   // shows on the phone too
             overlayOpen = false; startBuilt = false; renderStart()
             flash("Trail set — press Start")

@@ -69,6 +69,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
             updateGps()
             grabStartLocation()
             try { LiveTrack.onTick(this@RunService) } catch (e: Exception) { }
+            Run.nav?.trail?.let { t -> try { TrailTiles.ensure(this@RunService, t) } catch (e: Exception) { } }
             if (Run.isActive && ++saveCounter % 30 == 0) {
                 try { RunStore.saveCurrent(this@RunService, Run.toJson()) } catch (e: Exception) { }
             }
