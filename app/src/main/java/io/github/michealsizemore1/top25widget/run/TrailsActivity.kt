@@ -157,9 +157,15 @@ class TrailsActivity : Activity() {
             col.addView(chips(TrailSearch.RADII.map { "$it mi" to (it == r) }) { i ->
                 TrailSearch.setRadius(ctx, PREFS, "phone", TrailSearch.RADII[i]); start()
             })
-            val longest = TrailSearch.sortLongest(this, PREFS)
-            col.addView(chips(listOf("Nearest" to !longest, "Longest" to longest)) { i ->
-                TrailSearch.setSortLongest(ctx, PREFS, "phone", i == 1); render()
+            val mode = TrailSearch.sortMode(this, PREFS)
+            col.addView(chips(TrailSearch.SORTS.map { it.second to (it.first == mode) }) { i ->
+                TrailSearch.setSort(ctx, PREFS, "phone", TrailSearch.SORTS[i].first); render()
+            })
+            // Trail length.
+            val band = TrailSearch.lengthBand(this, PREFS)
+            col.addView(RunUi.text(this, "TRAIL LENGTH", RunUi.MUTED, 11f, true).apply { setPadding(dp(4), dp(12), 0, 0) })
+            col.addView(chips(listOf("Any", "<2 mi", "2–5", "5–10", "10+").mapIndexed { i, l -> l to (i == band) }) { i ->
+                TrailSearch.setLength(ctx, PREFS, "phone", i); render()
             })
             col.addView(EditText(this).apply {
                 hint = "Filter by name (e.g. Greenbelt)"; setText(filter); setSingleLine()
@@ -189,9 +195,11 @@ class TrailsActivity : Activity() {
         val ctx = this
         box.removeAllViews()
         val all = trails ?: return
-        val shown = TrailSearch.sort(all, TrailSearch.sortLongest(this, PREFS))
+        val band = TrailSearch.lengthBand(this, PREFS)
+        val shown = TrailSearch.sort(TrailSearch.byLength(all, band), TrailSearch.sortMode(this, PREFS))
             .filter { filter.isBlank() || it.name.contains(filter, true) }
         box.addView(RunUi.text(this, "${shown.size} trail" + (if (shown.size == 1) "" else "s") +
+            (if (band > 0) " · " + TrailSearch.LENGTHS[band].first else "") +
             (if (from == "you") " near you" else " around $from"), RunUi.MUTED, 12f, true).apply { setPadding(RunUi.dp(ctx, 4), RunUi.dp(ctx, 14), 0, 0) })
         shown.forEach { tr ->
             box.addView(RunUi.card(this).apply {

@@ -41,7 +41,8 @@ object SettingsSync {
         "voiceBoost" to (T.BOOL to true),     // raise volume while speaking
         "trailArea" to (T.STRING to ""),      // "" = near me, else "label|lat|lon"
         "trailRadius" to (T.INT to 4),        // miles
-        "trailSort" to (T.STRING to "near"),  // near | long
+        "trailSort" to (T.STRING to "near"),  // near | short | long
+        "trailLen" to (T.INT to 0),           // length filter: index into TrailSearch.LENGTHS
         "trailMapTiles" to (T.BOOL to true),  // topo map under the trail on the watch
         "hrCap" to (T.STRING to "easy"),      // easy-day heart-rate cap: off | easy | all (easy days + free runs)
         "hrCapZone" to (T.INT to 2),          // stay in this zone or below

@@ -626,7 +626,8 @@ class RunActivity : Activity() {
     private fun showTrails(): Unit = overlay { col ->
         val place = io.github.michealsizemore1.top25widget.TrailSearch.area(this, "run")
         val radius = io.github.michealsizemore1.top25widget.TrailSearch.radiusMi(this, "run")
-        val longest = io.github.michealsizemore1.top25widget.TrailSearch.sortLongest(this, "run")
+        val mode = io.github.michealsizemore1.top25widget.TrailSearch.sortMode(this, "run")
+        val band = io.github.michealsizemore1.top25widget.TrailSearch.lengthBand(this, "run")
         // Search settings changed (here or on the phone) → search again.
         val key = "${place?.encode()}|$radius"
         if (key != trailKey) { trailKey = key; trailCache = null; trailStatus = ""; trailShowAll = false }
@@ -635,7 +636,8 @@ class RunActivity : Activity() {
         val saved = io.github.michealsizemore1.top25widget.Courses.list(this)
         if (saved.isNotEmpty()) col.addView(card("★ Saved courses (${saved.size})", saved.take(2).joinToString(", ") { it.name }, 0xFFD4E635.toInt()) { showCourses() })
         col.addView(card("Where: " + (from ?: "Near me"), "Tap to change", C.ACCENT) { showTrailWhere() })
-        col.addView(card("Within $radius mi · " + (if (longest) "longest first" else "nearest first"), "Tap to change") { showTrailRange() })
+        col.addView(card("Within $radius mi · " + (io.github.michealsizemore1.top25widget.TrailSearch.SORTS.first { it.first == mode }.second.lowercase()) + " first",
+            (if (band > 0) io.github.michealsizemore1.top25widget.TrailSearch.LENGTHS[band].first + " · " else "") + "Tap to change") { showTrailRange() })
         if (Run.nav != null) col.addView(card("No trail", "Clear ${Run.nav?.trail?.name}", C.STOP) {
             Run.chooseTrail(null, false); io.github.michealsizemore1.top25widget.TrailSync.choose(this, null, false, "watch")
             overlayOpen = false; startBuilt = false; renderStart()
@@ -648,7 +650,8 @@ class RunActivity : Activity() {
             return@overlay
         }
         if (cached.isEmpty()) col.addView(label("No mapped trails within $radius miles.", C.MUTED, 12f))
-        val sorted = io.github.michealsizemore1.top25widget.TrailSearch.sort(cached, longest)
+        val sorted = io.github.michealsizemore1.top25widget.TrailSearch.let { it.sort(it.byLength(cached, band), mode) }
+        if (sorted.isEmpty() && cached.isNotEmpty()) col.addView(label("No trails ${io.github.michealsizemore1.top25widget.TrailSearch.LENGTHS[band].first} here — change the length.", C.MUTED, 12f))
         (if (trailShowAll) sorted else sorted.take(25)).forEach { t ->
             val mi = t.lengthM / 1609.344
             col.addView(card(t.name, String.format(java.util.Locale.US, "%.1f mi %s · %s · %s", mi, if (t.loop) "loop" else "one way",
@@ -748,13 +751,16 @@ class RunActivity : Activity() {
     /** How far, and sort order. */
     private fun showTrailRange(): Unit = overlay { col ->
         val TSr = io.github.michealsizemore1.top25widget.TrailSearch
-        val r = TSr.radiusMi(this, "run"); val longest = TSr.sortLongest(this, "run")
+        val r = TSr.radiusMi(this, "run"); val mode = TSr.sortMode(this, "run"); val band = TSr.lengthBand(this, "run")
         col.addView(label("How far?", Color.WHITE, 18f, true))
         TSr.RADII.forEach { mi -> col.addView(card((if (mi == r) "✓ " else "") + "Within $mi mi", "", if (mi == r) C.ACCENT else Color.WHITE) {
             TSr.setRadius(this, "run", "watch", mi); showTrailRange() }) }
         col.addView(label("Sort", C.MUTED, 11f).apply { setPadding(0, dp(10), 0, 0) })
-        col.addView(card((if (!longest) "✓ " else "") + "Nearest first", "", if (!longest) C.ACCENT else Color.WHITE) { TSr.setSortLongest(this, "run", "watch", false); showTrailRange() })
-        col.addView(card((if (longest) "✓ " else "") + "Longest first", "", if (longest) C.ACCENT else Color.WHITE) { TSr.setSortLongest(this, "run", "watch", true); showTrailRange() })
+        TSr.SORTS.forEach { (m, name) -> col.addView(card((if (m == mode) "✓ " else "") + "$name first", "", if (m == mode) C.ACCENT else Color.WHITE) {
+            TSr.setSort(this, "run", "watch", m); showTrailRange() }) }
+        col.addView(label("Trail length", C.MUTED, 11f).apply { setPadding(0, dp(10), 0, 0) })
+        TSr.LENGTHS.forEachIndexed { i, (name, _, _) -> col.addView(card((if (i == band) "✓ " else "") + name, "", if (i == band) C.ACCENT else Color.WHITE) {
+            TSr.setLength(this, "run", "watch", i); showTrailRange() }) }
         col.addView(card("Done", "", C.ACCENT) { showTrails() })
     }
 

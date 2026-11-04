@@ -21,7 +21,24 @@ object TrailSearch {
     fun area(ctx: Context, prefs: String): Place? = p(ctx, prefs).getString("trailArea", "")?.split("|")
         ?.takeIf { it.size == 3 }?.let { Place(it[0], it[1].toDoubleOrNull() ?: return null, it[2].toDoubleOrNull() ?: return null) }
     fun radiusMi(ctx: Context, prefs: String) = p(ctx, prefs).getInt("trailRadius", 4)
-    fun sortLongest(ctx: Context, prefs: String) = p(ctx, prefs).getString("trailSort", "near") == "long"
+    fun sortLongest(ctx: Context, prefs: String) = sortMode(ctx, prefs) == "long"
+    /** near | short | long */
+    fun sortMode(ctx: Context, prefs: String) = p(ctx, prefs).getString("trailSort", "near") ?: "near"
+    fun setSort(ctx: Context, prefs: String, me: String, mode: String) = set(ctx, prefs, me) { it.putString("trailSort", mode) }
+    val SORTS = listOf("near" to "Nearest", "short" to "Shortest", "long" to "Longest")
+
+    /** Trail length filter (miles): label, min, max. */
+    val LENGTHS = listOf(Triple("Any length", 0.0, 1e9), Triple("Under 2 mi", 0.0, 2.0), Triple("2–5 mi", 2.0, 5.0),
+        Triple("5–10 mi", 5.0, 10.0), Triple("10+ mi", 10.0, 1e9))
+    fun lengthBand(ctx: Context, prefs: String) = p(ctx, prefs).getInt("trailLen", 0).coerceIn(0, LENGTHS.size - 1)
+    fun setLength(ctx: Context, prefs: String, me: String, band: Int) = set(ctx, prefs, me) { it.putInt("trailLen", band) }
+    /** Keep trails in the length band (out & back counts the one-way length). */
+    fun byLength(list: List<Trail>, band: Int) = LENGTHS[band].let { (_, lo, hi) -> list.filter { it.lengthM / 1609.344 in lo..hi } }
+    fun sort(list: List<Trail>, mode: String) = when (mode) {
+        "long" -> list.sortedByDescending { it.lengthM }
+        "short" -> list.sortedBy { it.lengthM }
+        else -> list.sortedBy { it.distToStartM }
+    }
 
     private fun set(ctx: Context, prefs: String, me: String, f: (android.content.SharedPreferences.Editor) -> Unit) {
         val e = p(ctx, prefs).edit(); f(e); e.putLong("settingsAt", System.currentTimeMillis()).apply()
