@@ -169,7 +169,11 @@ object RunUi {
             var l=L.polyline(p,{color:'#d4e635',weight:5}).addTo(m);
             L.circleMarker(p[0],{radius:7,color:'#fff',weight:2,fillColor:'#46c46e',fillOpacity:1}).addTo(m);
             L.circleMarker(p[p.length-1],{radius:7,color:'#fff',weight:2,fillColor:'#e5484d',fillOpacity:1}).addTo(m);
-            m.fitBounds(l.getBounds(),{padding:[18,18]});</script></body></html>"""
+            // The map may get its real size a moment after the page loads — fit the route once it has it.
+            function fit(){m.invalidateSize();m.fitBounds(l.getBounds(),{padding:[18,18],maxZoom:17});}
+            var fitted=0;function tryFit(){if(document.getElementById('m').clientHeight>50){fit();fitted++;}}
+            tryFit();[100,300,700,1500].forEach(function(t){setTimeout(tryFit,t);});
+            window.addEventListener('resize',function(){if(fitted<6)tryFit();});</script></body></html>"""
         return try {
             android.webkit.WebView(ctx).apply {
                 settings.javaScriptEnabled = true
