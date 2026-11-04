@@ -111,6 +111,11 @@ class RunReceiverService : WearableListenerService() {
     /** Buttons tapped on the watch (Command Center, Stryd). */
     override fun onMessageReceived(event: com.google.android.gms.wearable.MessageEvent) {
         if (event.path.startsWith("/cmd/")) PhoneStatus.command(this, event.path, event.data)
+        // LiveTrack text sent: tell the watch, so it doesn't text a second time.
+        if (event.path.startsWith("/cmd/live") && Live.contacts(this).isNotEmpty() && Live.smsOn(this) &&
+            checkSelfPermission(android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try { Wearable.getMessageClient(this).sendMessage(event.sourceNodeId, "/live/ack", event.path.toByteArray()) } catch (e: Exception) { }
+        }
     }
 
     override fun onDataChanged(events: DataEventBuffer) {

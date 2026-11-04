@@ -261,6 +261,11 @@ class RunDetailActivity : Activity() {
             })
         }
 
+        // LiveTrack texts (who sent them) — for troubleshooting.
+        run.optJSONArray("liveLog")?.let { l ->
+            col.addView(RunUi.section(this, "LIVETRACK TEXTS"))
+            col.addView(RunUi.card(this).apply { addView(RunUi.text(ctx, (0 until l.length()).joinToString("\n") { l.optString(it) }, RunUi.MUTED, 12f)) })
+        }
         // Stryd connection details (for troubleshooting).
         val fb = run.optInt("gpsFallbackSeconds")
         val log = run.optJSONArray("strydLog")

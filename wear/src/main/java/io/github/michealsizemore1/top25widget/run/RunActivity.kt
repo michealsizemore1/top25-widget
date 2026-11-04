@@ -1194,8 +1194,11 @@ class RunActivity : Activity() {
     private fun lapNow() {
         if (!Run.isActive) return
         pulse(longArrayOf(0, 150))
-        if (Run.hasWorkout && !Run.workoutDone) { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
-        else { Run.lap(); flash("LAP ${Run.laps.size}") }
+        val s = Run.currentStep
+        val lastTimedStep = Run.hasWorkout && !Run.workoutDone && Run.stepIndex >= Run.workoutSteps.size - 1 &&
+            s?.optString("dur") in setOf("time", "dist")
+        if (Run.hasWorkout && !Run.workoutDone && !lastTimedStep) { Run.nextWorkoutStep(auto = false); flash("NEXT STEP") }
+        else { Run.lap(); flash("LAP ${Run.laps.size}") }   // last step (e.g. "Easy 6 mi"): just a lap, workout keeps going
     }
 
     /** Pause and show the Finish screen with a big SAVE button. */

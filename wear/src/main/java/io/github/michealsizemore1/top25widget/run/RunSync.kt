@@ -188,6 +188,11 @@ object WatchWorkouts {
 
 /** Receives zone settings and workouts from the phone app. */
 class RunSettingsListener : WearableListenerService() {
+    /** The phone confirms it sent a LiveTrack text. */
+    override fun onMessageReceived(event: com.google.android.gms.wearable.MessageEvent) {
+        if (event.path == "/live/ack") LiveTrack.lastAck = String(event.data)
+    }
+
     override fun onDataChanged(events: DataEventBuffer) {
         events.forEach { e ->
             // Course saved/removed on the phone.

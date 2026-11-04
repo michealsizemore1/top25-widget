@@ -59,16 +59,31 @@ object LiveTrack {
      * Who sends the text: the phone when it's with you (Bluetooth), otherwise the watch itself over its
      * own cell connection — right away, instead of a message to a phone at home that may arrive late.
      */
+    @Volatile var lastAck = ""
+    val log = java.util.Collections.synchronizedList(ArrayList<String>())
+    private fun note(what: String) { if (log.size < 50) log += java.text.SimpleDateFormat("h:mm:ss a", java.util.Locale.US).format(java.util.Date()) + " " + what }
+
     private fun textVia(ctx: Context, path: String, data: String, msg: String) {
         val app = ctx.applicationContext
+        val kind = path.substringAfterLast("/").removePrefix("live")
         Thread {
             val phoneNearby = try {
                 com.google.android.gms.tasks.Tasks.await(com.google.android.gms.wearable.Wearable.getNodeClient(app).connectedNodes,
                     5, java.util.concurrent.TimeUnit.SECONDS).any { it.isNearby }
             } catch (e: Exception) { false }
-            if (phoneNearby) RunSync.tellPhone(app, path, data.toByteArray()) { ok ->
-                if (!ok && p(app).getBoolean("liveSms", true)) Thread { watchText(app, msg) }.start()
-            } else if (p(app).getBoolean("liveSms", true)) watchText(app, msg)
+            if (phoneNearby) {
+                lastAck = ""
+                RunSync.tellPhone(app, path, data.toByteArray()) { ok ->
+                    note("$kind: asked phone (${if (ok) "delivered" else "failed"})")
+                    Thread {
+                        // Wait for the phone to confirm it texted; otherwise the watch sends it.
+                        val until = System.currentTimeMillis() + 20_000
+                        while (System.currentTimeMillis() < until && lastAck != path) Thread.sleep(500)
+                        if (lastAck == path) note("$kind: phone texted")
+                        else if (p(app).getBoolean("liveSms", true)) { watchText(app, msg); note("$kind: no reply from phone — $smsStatus") }
+                    }.start()
+                }
+            } else if (p(app).getBoolean("liveSms", true)) { watchText(app, msg); note("$kind: $smsStatus (phone not with you)") }
         }.start()
     }
 

@@ -188,8 +188,8 @@ object Run {
         val cap = hrCap
         if (heartRate > cap) { capOverSec++; capUnderSec = 0 } else { capUnderSec++; capOverSec = 0 }
         val now = System.currentTimeMillis()
-        if (capOverSec >= 20 && now - capLastAlert > 60_000) { capLastAlert = now; capOver = true; onEvent?.invoke("hrcap") }
-        if (capOver && capUnderSec >= 10) { capOver = false; onEvent?.invoke("hrcap_ok") }
+        if (capOverSec >= 10 && now - capLastAlert > 45_000) { capLastAlert = now; capOver = true; onEvent?.invoke("hrcap") }
+        if (capOver && capUnderSec >= 8) { capOver = false; onEvent?.invoke("hrcap_ok") }
     }
 
     @Volatile var criticalPower = 333        // watts
@@ -358,6 +358,7 @@ object Run {
         state = State.IDLE; startMillis = 0; movingSeconds = 0; distance = 0.0
         startLoc = null
         elevGain = 0.0; elevLoss = 0.0; altRef = Double.NaN
+        LiveTrack.log.clear()
         usingGpsFallback = false; gpsFallbackSeconds = 0; synchronized(strydLog) { strydLog.clear() }
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
         power10Window.clear(); power30Window.clear(); np4Sum = 0.0; np4Count = 0
@@ -512,6 +513,7 @@ object Run {
         if (gpsFallbackSeconds > 0) put("gpsFallbackSeconds", gpsFallbackSeconds)
         if (!altSmooth.isNaN()) { put("elevGain", Math.round(elevGain * 10) / 10.0); put("elevLoss", Math.round(elevLoss * 10) / 10.0) }   // meters, barometer
         synchronized(strydLog) { if (strydLog.isNotEmpty()) put("strydLog", JSONArray(strydLog)) }
+        synchronized(LiveTrack.log) { if (LiveTrack.log.isNotEmpty()) put("liveLog", JSONArray(LiveTrack.log.toList())) }
         put("source", source.name.lowercase())
         put("movingSeconds", movingSeconds); put("elapsedSeconds", ((endMillis - startMillis) / 1000).toInt())
         put("distance", distance)
