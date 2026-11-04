@@ -55,6 +55,12 @@ object Summary {
             )
             if (parts.isNotEmpty()) lines += "Stryd: " + parts.joinToString(" · ")
         }
+        run.optJSONObject("weather")?.takeIf { it.has("windMph") }?.let { w ->
+            lines += "Wind: " + Math.round(w.optDouble("windMph")) + " mph" +
+                (if (w.has("windDir")) " from " + RunWeather.compass(w.optInt("windDir")) else "") +
+                (if (w.has("gustMph")) " (gusts ${w.optInt("gustMph")})" else "") +
+                (if (w.has("airPct") && run.optJSONObject("stryd")?.has("airPowerPct") != true) " · est. air power ${w.optDouble("airPct")}%" else "")
+        }
         lines += "Recorded on Galaxy Watch (" + (if (run.optString("source") == "gps") "GPS" else "Stryd") + " pace/distance)"
         return lines.joinToString("\n")
     }
@@ -86,6 +92,7 @@ object CommandCenter {
                 if (w.has("tempF")) put("temp", w.optLong("tempF").toString())
                 if (w.has("humidity")) put("humidity", w.optLong("humidity"))
                 if (w.has("aqi")) put("aqi", w.optLong("aqi"))
+                if (w.has("airPct")) put("airPower", w.optDouble("airPct"))   // estimate; Stryd's measured value replaces it below
             }
             // Elevation gain: the watch's barometer (or the route), else Stryd's.
             run.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
@@ -93,7 +100,7 @@ object CommandCenter {
                 if (!has("elevGain")) s.optDouble("elevGain").takeIf { !it.isNaN() }?.let { put("elevGain", Math.round(it * 3.28084)) }
                 if (!has("temp")) s.optDouble("temp").takeIf { !it.isNaN() }?.let { put("temp", Math.round(it * 9 / 5 + 32).toString()) }
                 if (!has("humidity")) s.optDouble("humidity").takeIf { !it.isNaN() }?.let { put("humidity", Math.round(it)) }
-                s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { put("airPower", it) }
+                s.optDouble("airPowerPct").takeIf { !it.isNaN() }?.let { put("airPower", it) }   // measured beats estimated
                 s.optDouble("rss").takeIf { !it.isNaN() }?.let { put("rss", it.toInt()) }
             }
         }

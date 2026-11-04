@@ -20,7 +20,7 @@ object RunWeather {
     private const val HOME_LAT = 43.6121    // Meridian, ID — used if the run has no location at all
     private const val HOME_LON = -116.3915
 
-    fun has(run: JSONObject) = run.optJSONObject("weather")?.has("tempF") == true && (run.has("elevGain") || (run.optJSONArray("track")?.length() ?: 0) <= 10)
+    fun has(run: JSONObject) = run.optJSONObject("weather")?.let { it.has("tempF") && it.has("windMph") } == true && (run.has("elevGain") || (run.optJSONArray("track")?.length() ?: 0) <= 10)
 
     /** Where the run was: the watch's start reading, else first GPS point, else the phone's last location, else home. */
     @SuppressLint("MissingPermission")
@@ -59,11 +59,59 @@ object RunWeather {
         return if (best >= 0 && bestD < 3 * 3600_000L) vals.optDouble(best) else null
     }
 
+    /** Compass name for a wind direction (where it blows FROM). */
+    fun compass(deg: Int) = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[((deg % 360 + 360) % 360 + 22) / 45 % 8]
+
+    /**
+     * Estimated air power: the share of your running power spent pushing through air, from your speed,
+     * the wind at the run (and which way you were heading, if there's a GPS route), air density and a
+     * typical runner's frontal drag area. Stryd measures this with its wind sensor; this is an estimate
+     * of the same thing. Usually 1–5%; higher into a strong headwind.
+     */
+    fun airEstimate(run: JSONObject, w: JSONObject): Double? {
+        val samples = run.optJSONArray("samples") ?: return null
+        val windMs = w.optDouble("windMph").takeIf { !it.isNaN() }?.let { it * 0.44704 * 0.7 } ?: return null   // 10 m wind → about body height
+        val fromDeg = w.optDouble("windDir", Double.NaN)
+        val tempK = (w.optDouble("tempF", 55.0) - 32) * 5 / 9 + 273.15
+        val rho = (w.optDouble("pressure", 1013.0) * 100) / (287.05 * tempK)
+        val cdA = 0.24
+        // Heading over time from the GPS route (moving seconds → bearing).
+        val tr = run.optJSONArray("track")
+        val headings = ArrayList<Pair<Int, Double>>()
+        if (tr != null && tr.length() > 10 && !fromDeg.isNaN()) {
+            for (i in 1 until tr.length()) {
+                val a = tr.optJSONArray(i - 1) ?: continue; val b = tr.optJSONArray(i) ?: continue
+                val lat1 = Math.toRadians(a.optDouble(0)); val lat2 = Math.toRadians(b.optDouble(0))
+                val dLon = Math.toRadians(b.optDouble(1) - a.optDouble(1))
+                if (Math.abs(lat2 - lat1) + Math.abs(dLon) < 1e-7) continue
+                val brg = Math.toDegrees(Math.atan2(Math.sin(dLon) * Math.cos(lat2), Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)))
+                headings += b.optInt(2) to brg
+            }
+        }
+        var air = 0.0; var total = 0.0; var hi = 0
+        for (i in 0 until samples.length()) {
+            val s = samples.optJSONArray(i) ?: continue
+            val v = s.optInt(3) / 100.0; val pw = s.optInt(5)
+            if (v < 1.0 || pw <= 0) continue
+            val head: Double = if (headings.isNotEmpty()) {
+                val t = s.optInt(0)
+                while (hi + 1 < headings.size && headings[hi + 1].first <= t) hi++
+                windMs * Math.cos(Math.toRadians(fromDeg - headings[hi].second))   // + into the wind
+            } else 0.0
+            val rel = v + head
+            // No route: average over all directions → v·(v² + w²/2).
+            val pAir = if (headings.isNotEmpty()) 0.5 * rho * cdA * rel * Math.abs(rel) * v else 0.5 * rho * cdA * v * (v * v + windMs * windMs / 2)
+            air += maxOf(0.0, pAir); total += pw
+        }
+        if (total <= 0) return null
+        return Math.round(air / total * 1000) / 10.0
+    }
+
     /** Looks up and saves the weather into the run file. Call off the main thread. True if it worked. */
     fun fill(ctx: Context, start: Long): Boolean {
         val run = PhoneRuns.read(ctx, start) ?: return false
         if (has(run)) return true
-        val hadWeather = run.optJSONObject("weather")?.has("tempF") == true
+        val hadWeather = run.optJSONObject("weather")?.let { it.has("tempF") && it.has("windMph") } == true
         val (lat, lon) = place(ctx, run).let { it[0] to it[1] }
         val mid = start + run.optLong("elapsedSeconds", run.optLong("movingSeconds")) * 500   // middle of the run
         val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("GMT") }
@@ -73,9 +121,14 @@ object RunWeather {
         if (!hadWeather) try {
             val ageDays = (System.currentTimeMillis() - mid) / 86_400_000L
             val base = if (ageDays > 80) "https://archive-api.open-meteo.com/v1/archive" else "https://api.open-meteo.com/v1/forecast"
-            val o = get("$base?$ll&hourly=temperature_2m,relative_humidity_2m&temperature_unit=fahrenheit&timezone=GMT&start_date=$d0&end_date=$d1")
+            val o = get("$base?$ll&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=GMT&start_date=$d0&end_date=$d1")
             at(o, "temperature_2m", mid)?.let { w.put("tempF", Math.round(it)) }
             at(o, "relative_humidity_2m", mid)?.let { w.put("humidity", Math.round(it)) }
+            at(o, "wind_speed_10m", mid)?.let { w.put("windMph", Math.round(it * 10) / 10.0) }
+            at(o, "wind_direction_10m", mid)?.let { w.put("windDir", Math.round(it)) }
+            at(o, "wind_gusts_10m", mid)?.let { w.put("gustMph", Math.round(it)) }
+            at(o, "surface_pressure", mid)?.let { w.put("pressure", Math.round(it)) }
+            airEstimate(run, w)?.let { w.put("airPct", it) }
         } catch (e: Exception) { android.util.Log.w("RunWeather", "weather failed", e) }
         if (!hadWeather) try {
             val o = get("https://air-quality-api.open-meteo.com/v1/air-quality?$ll&hourly=us_aqi&timezone=GMT&start_date=$d0&end_date=$d1")

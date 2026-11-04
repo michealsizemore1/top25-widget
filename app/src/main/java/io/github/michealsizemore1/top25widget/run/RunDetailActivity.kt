@@ -113,6 +113,9 @@ class RunDetailActivity : Activity() {
                 wx.takeIf { it.has("tempF") }?.let { Triple("${it.optLong("tempF")}°", "temp °F", Color.WHITE) },
                 wx.takeIf { it.has("humidity") }?.let { Triple("${it.optLong("humidity")}%", "humidity", Color.WHITE) },
                 wx.takeIf { it.has("aqi") }?.let { Triple("${it.optLong("aqi")}", "AQI (US)", aqiColor(it.optInt("aqi"))) },
+                wx.takeIf { it.has("windMph") }?.let { Triple("${Math.round(it.optDouble("windMph"))}" + (if (it.has("windDir")) " " + RunWeather.compass(it.optInt("windDir")) else ""),
+                    "wind mph" + (if (it.has("gustMph")) " · gust ${it.optInt("gustMph")}" else ""), Color.WHITE) },
+                wx.takeIf { it.has("airPct") }?.let { Triple("${it.optDouble("airPct")}%", "air power (est.)", Color.WHITE) },
             )))
         }) else {
             col.addView(RunUi.text(this, "Looking up weather…", RunUi.MUTED, 13f))
