@@ -364,29 +364,27 @@ class RunActivity : Activity() {
             val lp = { last: Boolean -> LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { if (!last) marginEnd = dp(4) } }
             addView(pill("Command Center", if (ps.contains("at")) (if (cc == 0) "✓ sent" else "Send $cc") else "—", 0xFF7B61FF.toInt(), "/cmd/cc",
                 "Tap the notification on your phone"), lp(false))
-            addView(pill("Stryd", if (ps.getBoolean("stryd", false)) "✓" else "Connect", 0xFF50555E.toInt(), "/cmd/stryd",
-                "Phone is checking Stryd"), lp(true))
-        })
-        // LiveTrack on/off for the next run (same switch as Settings and the phone).
-        col.addView(label("", Color.WHITE, 12f, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(7), 0, dp(7))
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
-            fun show() {
-                val on = prefs.getBoolean("liveOn", false)
-                text = if (on) "● LiveTrack ON · tap to turn off" else "LiveTrack off · tap to turn on"
-                background = rounded(if (on) 0xFF1F6FB2.toInt() else C.CARD, 14)
-                setTextColor(if (on) Color.WHITE else C.MUTED)
-            }
-            show()
-            setOnClickListener {
-                if (prefs.getString("liveDb", "").isNullOrBlank()) { flash("Set up LiveTrack in the phone app first"); return@setOnClickListener }
-                val on = !prefs.getBoolean("liveOn", false)
-                prefs.edit().putBoolean("liveOn", on).apply()
-                show(); flash(if (on) "LiveTrack on — contacts get your link at Start" else "LiveTrack off")
-                if (on && checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                    requestPermissions(arrayOf(android.Manifest.permission.SEND_SMS), 7)
-            }
+            // LiveTrack on/off for the next run (same switch as Settings and the phone).
+            addView(column().apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(2), dp(6), dp(2), dp(6))
+                val title = label("LiveTrack", Color.WHITE, 11f, true); val state = label("", 0xDDFFFFFF.toInt(), 9f)
+                addView(title); addView(state)
+                fun show() {
+                    val on = prefs.getBoolean("liveOn", false)
+                    background = rounded(if (on) 0xFF1F6FB2.toInt() else 0xFF50555E.toInt(), 14)
+                    state.text = if (on) "● ON" else "Off"
+                }
+                show()
+                setOnClickListener {
+                    if (prefs.getString("liveDb", "").isNullOrBlank()) { flash("Set up LiveTrack in the phone app first"); return@setOnClickListener }
+                    val on = !prefs.getBoolean("liveOn", false)
+                    prefs.edit().putBoolean("liveOn", on).apply()
+                    show(); flash(if (on) "LiveTrack on — contacts get your link at Start" else "LiveTrack off")
+                    if (on && checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                        requestPermissions(arrayOf(android.Manifest.permission.SEND_SMS), 7)
+                }
+            }, lp(true))
         })
 
         // Today's workout (tap to change).
