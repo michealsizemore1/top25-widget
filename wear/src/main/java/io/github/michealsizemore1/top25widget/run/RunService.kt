@@ -292,6 +292,7 @@ class RunService : Service(), SensorEventListener, LocationListener {
             "ease" -> longArrayOf(0, 600)                               // ease off
             "hrcap" -> longArrayOf(0, 600, 200, 600)                    // over the easy-day heart-rate cap
             "hrcap_ok" -> longArrayOf(0, 120)
+            "mile" -> if (getSharedPreferences("run", 0).getBoolean("voiceMiles", true)) longArrayOf(0, 250, 120, 250) else return
             "stryd_lost" -> longArrayOf(0, 300, 150, 300, 150, 300)
             else -> longArrayOf(0, 200)
         }

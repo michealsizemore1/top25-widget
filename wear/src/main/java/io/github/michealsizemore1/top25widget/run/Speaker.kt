@@ -131,6 +131,9 @@ object Speaker {
             "autopause" -> say("Auto paused")
             "autoresume" -> say("Resumed")
             "lap", "lap_auto" -> if (laps()) lapText()?.let { say(it) }
+            "mile" -> if (p().getBoolean("voiceMiles", true)) Run.lastMile?.let { (n, sec, hr) ->
+                say("Mile $n. " + duration(sec) + ". Pace " + pace(sec) + (if (hr > 0) ". Heart rate $hr" else "") + ".")
+            }
             "step" -> if (steps()) {
                 // A step just ended: its numbers, then what's next.
                 val done = lapText(short = true)

@@ -171,6 +171,12 @@ object Run {
     fun capApplies(): Boolean {
         if (hrCapMode == "off") return false
         if (!hasWorkout || workoutDone) return hrCapMode == "all"
+        return easyStep()
+    }
+
+    /** Is the current workout step an easy (zone 1–2) one? */
+    fun easyStep(): Boolean {
+        if (!hasWorkout || workoutDone) return false
         val s = currentStep ?: return false
         val target = s.optString("target")
         if (target == "hr") return s.optInt("zone") in 1..hrCapZone
@@ -244,6 +250,21 @@ object Run {
     var movingSeconds = 0; private set
     var distance = 0.0; private set          // meters
     private var lastStrydTotal: Double? = null
+    // Mile alerts inside workouts (steps are the laps there, so miles are tracked separately).
+    private var mileNum = 0
+    private var mileStartSec = 0
+    private var mileHrSum = 0L; private var mileHrN = 0
+    /** Last finished mile: number, seconds, average heart rate. */
+    @Volatile var lastMile: Triple<Int, Int, Int>? = null; private set
+    private fun checkMile() {
+        if (heartRate > 0) { mileHrSum += heartRate; mileHrN++ }
+        val m = (distance / METERS_PER_MILE).toInt()
+        if (m > mileNum) {
+            lastMile = Triple(m, movingSeconds - mileStartSec, if (mileHrN > 0) (mileHrSum / mileHrN).toInt() else 0)
+            mileNum = m; mileStartSec = movingSeconds; mileHrSum = 0; mileHrN = 0
+            if (easyStep()) onEvent?.invoke("mile")
+        }
+    }
     // Elevation from the barometer: smoothed altitude, counting climbs/descents of more than 2 m (ignores pressure noise).
     private var altSmooth = Double.NaN
     private var altRef = Double.NaN
@@ -358,6 +379,7 @@ object Run {
         state = State.IDLE; startMillis = 0; movingSeconds = 0; distance = 0.0
         startLoc = null
         elevGain = 0.0; elevLoss = 0.0; altRef = Double.NaN
+        mileNum = 0; mileStartSec = 0; mileHrSum = 0; mileHrN = 0; lastMile = null
         LiveTrack.log.clear()
         usingGpsFallback = false; gpsFallbackSeconds = 0; synchronized(strydLog) { strydLog.clear() }
         samples.clear(); track.clear(); speedWindow.clear(); powerWindow.clear(); laps.clear()
@@ -470,7 +492,7 @@ object Run {
             samples += intArrayOf(movingSeconds, (distance * 10).toInt(), hr, (speedNow * 100).toInt(), cad, strydPower, elapsedSeconds)
 
             if (state == State.RUNNING) checkCap()
-            if (hasWorkout && !workoutDone) checkWorkout()
+            if (hasWorkout && !workoutDone) { checkWorkout(); checkMile() }
             // Auto-lap every mile (during a workout, each step is a lap instead).
             else if (distance - lapStartMeters >= METERS_PER_MILE) lap(auto = true)
         } else if (state == State.PAUSED || state == State.AUTO_PAUSED) {
