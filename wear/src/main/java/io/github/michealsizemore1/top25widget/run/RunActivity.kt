@@ -404,6 +404,31 @@ class RunActivity : Activity() {
             setOnClickListener { startRun() }
         })
 
+        // Aerobic decoupling trend (same as the phone): steady runs, last 4 weeks.
+        col.addView(card().apply {
+            visibility = View.GONE
+            val head = label("AEROBIC DECOUPLING", C.MUTED, 10f, true)
+            val big = label("", Color.WHITE, 18f, true)
+            val sub = label("", C.MUTED, 10f)
+            addView(head); addView(big); addView(sub)
+            val box = this
+            Thread {
+                val D = io.github.michealsizemore1.top25widget.Decoupling
+                val now = System.currentTimeMillis()
+                val pts = RunStore.list(this@RunActivity).asSequence()
+                    .filter { now - (it.nameWithoutExtension.toLongOrNull() ?: 0L) < 28 * 86_400_000L }
+                    .mapNotNull { f -> RunStore.read(f)?.let { r -> D.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.main } }
+                    .take(12).toList()
+                runOnUiThread {
+                    if (pts.isEmpty()) return@runOnUiThread
+                    val avg = pts.average()
+                    big.text = D.text(avg) + " · " + D.rating(avg); big.setTextColor(D.color(avg))
+                    sub.text = "average of ${pts.size} steady run" + (if (pts.size == 1) "" else "s") + ", last 4 weeks · latest " + D.text(pts.first())
+                    box.visibility = View.VISIBLE
+                }
+            }.start()
+        })
+
         // Sensors at a glance.
         col.addView(card().apply {
             addView(label("Stryd", C.MUTED, 10f))
