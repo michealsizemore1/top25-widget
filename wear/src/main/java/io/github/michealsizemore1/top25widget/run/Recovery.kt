@@ -92,6 +92,16 @@ class MorningCheckActivity : Activity() {
             col.addView(label(r.advice, Color.WHITE, 11f).apply { setPadding(0, dp(6), 0, 0) })
         }
         col.addView(button(if (Recovery.checkedToday(this)) "Check again" else "Morning check · 2½ min", ACCENT, Color.BLACK) { intro() })
+        // Resting HR for the zones, from the last 14 days of morning checks.
+        val p = getSharedPreferences("run", 0)
+        val cur = p.getFloat("hrRest", 43.5f).toDouble()
+        fun f(v: Double) = if (v % 1.0 == 0.0) "${v.toInt()}" else String.format(java.util.Locale.US, "%.1f", v)
+        val mr = Readiness.morningRest(ReadinessSync.checks(this))
+        col.addView(label("Resting HR for zones: ${f(cur)}" + (mr?.let { "\n14-day morning avg: ${f(it.first)} (${it.second} checks)" } ?: "\n14-day morning avg after 5 checks"),
+            MUTED, 10f).apply { setPadding(0, dp(8), 0, 0) })
+        if (mr != null && kotlin.math.abs(mr.first - cur) >= 1) col.addView(button("Use ${f(mr.first)} for zones", CARD, Color.WHITE) {
+            p.edit().putFloat("hrRest", mr.first.toFloat()).apply(); Run.hrRest = mr.first; summary()
+        })
         val nights = ReadinessSync.nights(this)
         col.addView(label(if (nights.isEmpty()) "Sleep comes from Garmin Connect or Samsung Health via the phone app (Readiness → Connect sleep)." else
             "Sleep · last night " + (nights.lastOrNull { it.day == Readiness.today() }?.let { Readiness.hmm(it.minutes) } ?: "not in yet"),

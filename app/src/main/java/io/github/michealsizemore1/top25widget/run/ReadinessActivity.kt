@@ -234,6 +234,31 @@ class ReadinessActivity : Activity() {
         })
 
         // Critical power.
+        // Resting heart rate for the zones, from the morning checks (H10, lying still after waking).
+        col.addView(RunUi.section(this, "RESTING HEART RATE (ZONES)"))
+        col.addView(RunUi.card(this).apply {
+            val cur = RunSettings.hrRest(ctx)
+            val mr = Readiness.morningRest(ReadinessSync.checks(ctx))
+            fun f(v: Double) = if (v % 1.0 == 0.0) "${v.toInt()}" else String.format(java.util.Locale.US, "%.1f", v)
+            addView(RunUi.text(ctx, "Zones use ${f(cur)} bpm" + (mr?.let { "  ·  14-day morning avg ${f(it.first)}" } ?: ""), Color.WHITE, 18f, true))
+            if (mr == null) {
+                val n = ReadinessSync.checks(ctx).count { it.hr > 0 && Readiness.daysBetween(it.day, Readiness.today()) in 0..13 }
+                addView(RunUi.text(ctx, "Needs 5 morning checks in the last 14 days ($n so far).", RunUi.MUTED, 12f))
+            } else {
+                val d = mr.first - cur
+                addView(RunUi.text(ctx, "From ${mr.second} morning checks. " + when {
+                    kotlin.math.abs(d) < 1 -> "Matches your setting — nothing to change."
+                    kotlin.math.abs(d) < 3 -> "Within ${f(kotlin.math.abs(d))} bpm — normal day-to-day variation, changing is optional."
+                    else -> "${f(kotlin.math.abs(d))} bpm ${if (d > 0) "higher" else "lower"} than your setting — worth updating your zones."
+                }, RunUi.MUTED, 12f))
+                if (kotlin.math.abs(d) >= 1) addView(RunUi.button(ctx, "Use ${f(mr.first)} bpm for zones", if (kotlin.math.abs(d) >= 3) RunUi.ACCENT else RunUi.CARD,
+                    if (kotlin.math.abs(d) >= 3) Color.BLACK else Color.WHITE) {
+                    RunSettings.save(ctx, RunSettings.hrMax(ctx), mr.first, RunSettings.cp(ctx), RunSettings.cal(ctx), RunSettings.ccUrl(ctx))
+                    Toast.makeText(ctx, "Resting HR set to ${f(mr.first)} — on the watch too", Toast.LENGTH_SHORT).show(); render()
+                }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
+            }
+        })
+
         col.addView(RunUi.section(this, "CRITICAL POWER"))
         col.addView(RunUi.card(this).apply {
             val cur = RunSettings.cp(ctx)

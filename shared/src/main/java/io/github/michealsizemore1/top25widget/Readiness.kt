@@ -194,6 +194,13 @@ object Readiness {
         return z.length() >= 5 && z.optInt(3) + z.optInt(4) >= 15 * 60
     }
 
+    /** Average morning-check heart rate over the last 14 days (rounded to 0.5), with the number of checks; null until 5 checks. */
+    fun morningRest(checks: List<Check>, today: String = today()): Pair<Double, Int>? {
+        val l = checks.filter { it.hr > 0 && daysBetween(it.day, today) in 0..13 }
+        if (l.size < 5) return null
+        return Math.round(l.map { it.hr }.average() * 2) / 2.0 to l.size
+    }
+
     fun daysBetween(a: String, b: String): Long = try {
         java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.parse(a), java.time.LocalDate.parse(b))
     } catch (e: Exception) { 999 }
