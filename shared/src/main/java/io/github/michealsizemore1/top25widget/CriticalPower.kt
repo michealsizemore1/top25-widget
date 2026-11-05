@@ -10,7 +10,7 @@ import kotlin.math.roundToInt
  * alone would give a flat curve and a far-too-low CP, so then nothing is suggested.
  */
 object CriticalPower {
-    val DURATIONS = intArrayOf(180, 240, 300, 420, 540, 600, 720, 900, 1200)
+    val DURATIONS = listOf(180, 240, 300, 420, 540, 600, 720, 900, 1200)
 
     data class Best(val sec: Int, val watts: Int, val start: Long)
     data class Estimate(
