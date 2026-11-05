@@ -177,47 +177,9 @@ class RunSettingsActivity : Activity() {
             Toast.makeText(ctx, "Saved — sent to your watch", Toast.LENGTH_SHORT).show()
         }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) } })
 
-        // ---- Stryd
-        col.addView(RunUi.section(this, "STRYD"))
-        if (StrydCloud.connected(this)) {
-            col.addView(RunUi.card(this).apply {
-                addView(RunUi.text(ctx, "Connected as ${StrydCloud.email(ctx)}", Color.WHITE, 16f, true))
-                addView(Switch(ctx).apply {
-                    text = "Add Stryd data to new runs automatically"; setTextColor(Color.WHITE)
-                    isChecked = StrydCloud.autoFetch(ctx)
-                    setOnCheckedChangeListener { _, on -> StrydCloud.setAutoFetch(ctx, on) }
-                    setPadding(0, dp(10), 0, 0)
-                })
-                addView(RunUi.text(ctx, "Sign out", RunUi.MUTED, 14f, true).apply {
-                    setPadding(0, dp(12), 0, 0)
-                    setOnClickListener { StrydCloud.signOut(ctx); render() }
-                })
-            })
-        } else {
-            col.addView(RunUi.text(this,
-                "Sign in with your Stryd app login. After each run the phone finds the same run in your Stryd account " +
-                "and adds ground time, oscillation, leg spring stiffness, elevation, RSS, weather, and Air Power when Stryd has it. " +
-                "Your login stays on this phone. Stryd has no official public connection, so this uses the same sign-in " +
-                "as the Stryd website and could stop working if Stryd changes it.", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(8), dp(4), 0) })
-            val email = input("Stryd email", StrydCloud.email(this), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
-            val pw = input("Stryd password", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
-            col.addView(RunUi.button(this, "Connect Stryd", RunUi.STRYD, Color.WHITE) {
-                if (email.text.isBlank() || pw.text.isEmpty()) {
-                    Toast.makeText(ctx, "Enter your Stryd email and password", Toast.LENGTH_SHORT).show(); return@button
-                }
-                val e = email.text.toString(); val p = pw.text.toString()
-                Thread {
-                    val msg = try {
-                        StrydCloud.signIn(ctx, e, p)
-                        // Fill in Stryd data for runs already on the phone.
-                        PhoneRuns.list(ctx).mapNotNull { PhoneRuns.read(it) }.filter { !it.has("stryd") }
-                            .forEach { StrydWorker.enqueue(ctx, it.optLong("start"), delayMinutes = 0) }
-                        "Stryd connected"
-                    } catch (ex: Exception) { "Stryd: ${ex.message}" }
-                    runOnUiThread { Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show(); render() }
-                }.start()
-            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
-        }
+        // (Stryd account sign-in removed: Stryd only has runs after the pod's offline sync, which isn't used.
+        //  The pod itself still pairs with the watch for pace, distance, power and cadence.)
+        if (StrydCloud.connected(this)) StrydCloud.signOut(this)   // don't keep an unused password/token on the phone
 
         // ---- Versions
         col.addView(RunUi.section(this, "APP VERSIONS"))
