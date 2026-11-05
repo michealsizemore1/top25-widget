@@ -72,7 +72,7 @@ class MorningCheckActivity : Activity() {
     }
 
     /** Today's readiness, or an invitation to do the check. */
-    private fun summary() = page { col ->
+    private fun summary(): Unit = page { col ->
         col.addView(label("READINESS", MUTED, 10f, true))
         val r = try { Recovery.result(this) } catch (e: Exception) { null }
         if (r == null) {
