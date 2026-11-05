@@ -233,7 +233,6 @@ class RunActivity : Activity() {
         set("quickBtn", if (prefs.getBoolean("gestures", true)) "On" else "Off")
         set("bottomBtn", if (prefs.getBoolean("bottomBtn", true)) "On" else "Off")
         set("keepOn", if (prefs.getBoolean("keepOn", true)) "On" else "Off")
-        set("keyLog", "Button log:\n" + (prefs.getString("buttonLog", null)?.lines()?.take(3)?.joinToString("\n") ?: "none yet"), C.DIM)
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
         startValues["trailLine"]?.apply {
             val n = Run.nav
@@ -492,7 +491,7 @@ class RunActivity : Activity() {
         col.addView(row("voiceRow", "Audio prompts") { showVoiceSettings() })
         col.addView(row("bottomBtn", "Bottom button: start · lap · double-press finish") {
             prefs.edit().putBoolean("bottomBtn", !prefs.getBoolean("bottomBtn", true)).apply()
-        }.apply { addView(label("", C.DIM, 9f).also { startValues["keyLog"] = it }) })
+        })
         col.addView(row("keepOn", "Keep screen on in BeyondStride") {
             val on = !prefs.getBoolean("keepOn", true)
             prefs.edit().putBoolean("keepOn", on).apply()
@@ -503,7 +502,7 @@ class RunActivity : Activity() {
             prefs.edit().putBoolean("gestures", !prefs.getBoolean("gestures", true)).apply()
         }.apply {
             addView(label("Anywhere on a run screen: double-tap for a lap (next step in a workout); press and hold " +
-                "about a second to pause and open Finish (big SAVE / RESUME). Tip: set the orange Quick button to open BeyondStride.", C.MUTED, 9f))
+                "about a second to pause and open Finish (big SAVE / RESUME).", C.MUTED, 9f))
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD

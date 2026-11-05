@@ -113,7 +113,7 @@ class RunsActivity : Activity() {
             )))
         })
 
-        // Destinations: Command Center, Stryd.
+        // Command Center and LiveTrack (same buttons as the watch).
         val unsentCc = runs.map { it.optLong("start") }.filter { !PhoneRuns.sentToCommandCenter(this, it) }
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -128,19 +128,20 @@ class RunsActivity : Activity() {
                     addView(RunUi.text(ctx, status, 0xDDFFFFFF.toInt(), 12f).apply { gravity = Gravity.CENTER })
                     setOnClickListener { onClick() }
                 }
-            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { if (!last) marginEnd = dp(8) } }
+            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { if (!last) marginEnd = dp(8) } }
             addView(pill("Command Center", if (unsentCc.isEmpty()) "✓ all sent" else "Send ${unsentCc.size}", RunUi.CC) {
                 if (unsentCc.isEmpty()) Toast.makeText(ctx, "All runs are already in the Command Center", Toast.LENGTH_SHORT).show()
                 else CommandCenter.send(ctx, unsentCc)
             }, lp(false))
-            addView(pill("Stryd", if (StrydCloud.connected(ctx)) "✓ connected" else "Connect", RunUi.STRYD) {
-                if (StrydCloud.connected(ctx)) {
-                    // Check for Stryd data on any run that doesn't have it yet.
-                    val missing = runs.filter { !it.has("stryd") }.map { it.optLong("start") }
-                    missing.forEach { StrydWorker.enqueue(ctx, it, delayMinutes = 0) }
-                    Toast.makeText(ctx, if (missing.isEmpty()) "All runs have their Stryd data"
-                        else "Checking Stryd for ${missing.size} run${if (missing.size == 1) "" else "s"}…", Toast.LENGTH_SHORT).show()
-                } else startActivity(Intent(ctx, RunSettingsActivity::class.java))
+            // LiveTrack on/off (same switch as the watch).
+            val live = getSharedPreferences("runsettings", 0).getBoolean("liveOn", false)
+            addView(pill("LiveTrack", if (live) "● ON" else "Off", if (live) 0xFF1F6FB2.toInt() else 0xFF50555E.toInt()) {
+                if (Live.db(ctx).isBlank()) startActivity(Intent(ctx, LiveTrackActivity::class.java))
+                else {
+                    RunSettings.setBool(ctx, "liveOn", !live)
+                    Toast.makeText(ctx, if (!live) "LiveTrack on — on your watch too" else "LiveTrack off", Toast.LENGTH_SHORT).show()
+                    recreate()
+                }
             }, lp(true))
         })
 
