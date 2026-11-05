@@ -231,6 +231,8 @@ object Speaker {
         val sec = json.optInt("movingSeconds"); val m = json.optDouble("distance")
         val parts = mutableListOf("Run saved", miles(m), duration(sec), "average pace " + pace(secPerMile(sec, m)))
         json.optInt("avgHr").takeIf { it > 0 }?.let { parts += "average heart rate $it" }
+        json.optJSONObject("newBests")?.let { nb -> nb.keys().forEach { k ->
+            parts += "New personal best. " + io.github.michealsizemore1.top25widget.Insights.pbName(k) + " in " + duration(nb.optInt(k)) } }
         say(parts.joinToString(". "))
     }
 }

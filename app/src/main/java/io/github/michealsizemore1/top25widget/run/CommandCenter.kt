@@ -53,6 +53,18 @@ object Summary {
             }
         }
 
+        io.github.michealsizemore1.top25widget.Insights.zone2(run, RunSettings.hrMax(ctx), RunSettings.hrRest(ctx))?.let { z ->
+            section("ZONE 2", listOfNotNull("Pace " + RunMath.paceFor(z.secPerMile, RunMath.METERS_PER_MILE) + " /mi" +
+                (if (z.power > 0) " · ${z.power} W" else "") + " · ${z.minutes} min"))
+        }
+        run {
+            val earlier = PhoneRuns.list(ctx).mapNotNull { PhoneRuns.read(it) }.filter { it.optLong("start") < run.optLong("start") }
+            val nb = io.github.michealsizemore1.top25widget.Insights.newBests(run, earlier)
+            if (nb.isNotEmpty()) section("NEW PERSONAL BESTS", nb.map { (k, v) -> io.github.michealsizemore1.top25widget.Insights.pbName(k) + " · " + io.github.michealsizemore1.top25widget.Insights.clock(v) })
+            val ld = io.github.michealsizemore1.top25widget.Insights.load(earlier + run, run.optLong("start") + 1000)
+            section("TRAINING LOAD", listOf(ld.status + " · ${ld.acute} stress last 7 days" + (ld.ratio?.let { String.format(Locale.US, " · ratio %.2f", it) } ?: "")))
+        }
+
         val laps = run.optJSONArray("laps")
         if (laps != null && laps.length() > 1) section("SPLITS", (0 until laps.length()).map { i ->
             val l = laps.getJSONObject(i)

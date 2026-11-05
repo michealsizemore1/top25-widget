@@ -205,6 +205,20 @@ object RunViews {
         })
 
         zoneCard(ctx, col, "HEART-RATE ZONES", json.optJSONArray("hrZoneSeconds"), Run.HR_ZONE_NAMES)
+        json.optJSONObject("newBests")?.takeIf { it.length() > 0 }?.let { nb ->
+            col.addView(card(ctx).apply {
+                addView(label(ctx, "🏅 NEW PERSONAL BEST" + (if (nb.length() > 1) "S" else ""), 0xFFF2C94C.toInt(), 12f, true))
+                nb.keys().forEach { k -> addView(label(ctx, io.github.michealsizemore1.top25widget.Insights.pbName(k) + "  " + io.github.michealsizemore1.top25widget.Insights.clock(nb.optInt(k)), Color.WHITE, 15f, true)) }
+            })
+        }
+        json.optJSONObject("z2")?.let { z ->
+            col.addView(label(ctx, "ZONE 2", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
+            col.addView(card(ctx).apply {
+                addView(stat("Pace in Zone 2", io.github.michealsizemore1.top25widget.RunMath.paceFor(z.optInt("pace"), io.github.michealsizemore1.top25widget.RunMath.METERS_PER_MILE)))
+                if (z.optInt("power") > 0) addView(stat("Power in Zone 2", "${z.optInt("power")} W"))
+                addView(stat("Time in Zone 2", "${z.optInt("minutes")} min"))
+            })
+        }
         io.github.michealsizemore1.top25widget.Decoupling.of(json)?.let { d ->
             val m = d.main ?: return@let
             col.addView(label(ctx, "AEROBIC DECOUPLING", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })

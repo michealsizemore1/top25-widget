@@ -363,6 +363,24 @@ object Run {
         if (movingSeconds - lapStartSec > 5) lap(auto = true)
         val json = toJson(System.currentTimeMillis())
         try { io.github.michealsizemore1.top25widget.Decoupling.compute(json)?.let { json.put("decoupling", it.toJson()) } } catch (e: Exception) { }
+        try {
+            io.github.michealsizemore1.top25widget.Insights.zone2(json, hrMax, hrRest)?.let { json.put("z2", io.github.michealsizemore1.top25widget.Insights.z2Json(it)) }
+            val bests = io.github.michealsizemore1.top25widget.Insights.bestEfforts(json)
+            if (bests.isNotEmpty()) json.put("bests", io.github.michealsizemore1.top25widget.Insights.bestsJson(bests))
+            // New personal bests vs. every earlier run (records kept in prefs; built from history the first time).
+            val p = ctx.getSharedPreferences("run", 0)
+            val rec = try { org.json.JSONObject(p.getString("pbRecords", null) ?: "") } catch (e: Exception) {
+                org.json.JSONObject().also { o -> io.github.michealsizemore1.top25widget.Insights.records(RunStore.list(ctx).mapNotNull { RunStore.read(it) })
+                    .forEach { (k, v) -> o.put(k, org.json.JSONObject().put("sec", v.sec).put("start", v.start)) } }
+            }
+            val newB = org.json.JSONObject()
+            bests.forEach { (k, v) ->
+                val old = rec.optJSONObject(k)?.optInt("sec") ?: Int.MAX_VALUE
+                if (v < old) { newB.put(k, v); rec.put(k, org.json.JSONObject().put("sec", v).put("start", startMillis)) }
+            }
+            if (newB.length() > 0) json.put("newBests", newB)
+            p.edit().putString("pbRecords", rec.toString()).apply()
+        } catch (e: Exception) { }
         RunStore.save(ctx, json)
         RunStore.clearCurrent(ctx)
         RunTileService.refresh(ctx)

@@ -404,6 +404,37 @@ class RunActivity : Activity() {
             setOnClickListener { startRun() }
         })
 
+        // Training load, Zone 2 fitness and personal bests (same as the phone).
+        col.addView(card().apply {
+            visibility = View.GONE
+            addView(label("TRENDS", C.MUTED, 10f, true))
+            val loadL = label("", Color.WHITE, 13f, true); val loadS = label("", C.MUTED, 10f)
+            val z2L = label("", Color.WHITE, 12f, true); val pbL = label("", C.MUTED, 10f)
+            addView(loadL); addView(loadS); addView(z2L); addView(pbL)
+            val box = this
+            Thread {
+                val now = System.currentTimeMillis()
+                val runs = RunStore.list(this@RunActivity).filter { now - (it.nameWithoutExtension.toLongOrNull() ?: 0L) < 56 * 86_400_000L }
+                    .mapNotNull { RunStore.read(it) }
+                val ld = io.github.michealsizemore1.top25widget.Insights.load(runs, now)
+                val (z2now, z2before) = io.github.michealsizemore1.top25widget.Insights.z2Trend(runs, Run.hrMax, Run.hrRest, now)
+                val rec = try { org.json.JSONObject(prefs.getString("pbRecords", null) ?: "{}") } catch (e: Exception) { org.json.JSONObject() }
+                runOnUiThread {
+                    if (runs.isEmpty()) return@runOnUiThread
+                    loadL.text = "Load: " + ld.status; loadL.setTextColor(ld.color)
+                    loadS.text = "${ld.acute} stress this week" + (if (ld.ratio != null) " · usual ${ld.chronicWeek}" else "") +
+                        String.format(java.util.Locale.US, " · %.1f mi", ld.milesWeek)
+                    z2L.text = z2now?.let { n -> "Zone 2 pace " + io.github.michealsizemore1.top25widget.RunMath.paceFor(n, io.github.michealsizemore1.top25widget.RunMath.METERS_PER_MILE) +
+                        (z2before?.let { b -> val d = b - n; if (d >= 0) " · ${d}s faster" else " · ${-d}s slower" } ?: "") } ?: ""
+                    z2L.visibility = if (z2now == null) View.GONE else View.VISIBLE
+                    pbL.text = io.github.michealsizemore1.top25widget.Insights.PB_DISTANCES.mapNotNull { (k, _) -> rec.optJSONObject(k)?.let { io.github.michealsizemore1.top25widget.Insights.pbName(k).replace("Half marathon", "Half") + " " + io.github.michealsizemore1.top25widget.Insights.clock(it.optInt("sec")) } }
+                        .joinToString(" · ").let { if (it.isBlank()) "" else "PBs: $it" }
+                    pbL.visibility = if (pbL.text.isNullOrBlank()) View.GONE else View.VISIBLE
+                    box.visibility = View.VISIBLE
+                }
+            }.start()
+        })
+
         // Aerobic decoupling trend (same as the phone): steady runs, last 4 weeks.
         col.addView(card().apply {
             visibility = View.GONE

@@ -81,6 +81,27 @@ class RunDetailActivity : Activity() {
                 LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         })
 
+        // New personal bests in this run (vs. every earlier run).
+        run {
+            val earlier = PhoneRuns.list(this).mapNotNull { PhoneRuns.read(it) }.filter { it.optLong("start") < start }
+            val nb = io.github.michealsizemore1.top25widget.Insights.newBests(run, earlier)
+            if (nb.isNotEmpty()) col.addView(RunUi.card(this).apply {
+                addView(RunUi.text(ctx, "🏅 New personal best" + (if (nb.size > 1) "s" else ""), 0xFFF2C94C.toInt(), 16f, true))
+                nb.forEach { (k, v) -> addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Insights.pbName(k) + "  " + io.github.michealsizemore1.top25widget.Insights.clock(v), Color.WHITE, 15f, true)) }
+            })
+        }
+        // Zone 2.
+        io.github.michealsizemore1.top25widget.Insights.zone2(run, RunSettings.hrMax(this), RunSettings.hrRest(this))?.let { z ->
+            col.addView(RunUi.section(this, "ZONE 2"))
+            col.addView(RunUi.card(this).apply {
+                addView(RunUi.statGrid(ctx, listOfNotNull(
+                    Triple(io.github.michealsizemore1.top25widget.RunMath.paceFor(z.secPerMile, io.github.michealsizemore1.top25widget.RunMath.METERS_PER_MILE), "pace in Zone 2", 0xFF22C55E.toInt()),
+                    z.power.takeIf { it > 0 }?.let { Triple("$it W", "power in Zone 2", Color.WHITE) },
+                    Triple("${z.minutes} min", "time in Zone 2", Color.WHITE),
+                )))
+            })
+        }
+
         // Aerobic decoupling.
         io.github.michealsizemore1.top25widget.Decoupling.of(run)?.let { d ->
             val m = d.main ?: return@let
