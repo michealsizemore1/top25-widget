@@ -43,6 +43,7 @@ object Speaker {
     // ---- Making prompts heard over music: lower (or pause) the music and turn the voice up while speaking.
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
     @Volatile private var pending = 0
+    private const val PAUSE_MS = 450L      // pause between metrics
     private var focus: android.media.AudioFocusRequest? = null
     private var savedVolume = -1
 
@@ -88,13 +89,27 @@ object Speaker {
     fun say(text: String, force: Boolean = false) {
         if (!force && !on()) return
         if (!ready) return
+        // Each metric is its own sentence ("Mile 3. Pace 9:12. Heart rate 140."): speak them one by one
+        // with a short pause between, instead of one run-on sentence.
+        val parts = text.split(Regex("(?<=[.!?])\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return
         main.post {
-            pending++
+            pending += parts.size * 2 - 1
             beginSpeaking()
             val params = android.os.Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f) }
-            // Speak a moment after the music dips, so the first word isn't lost.
-            main.postDelayed({ if (tts?.speak(text, TextToSpeech.QUEUE_ADD, params, "run${System.nanoTime()}") != TextToSpeech.SUCCESS) {
-                pending = (pending - 1).coerceAtLeast(0); doneSpeaking() } }, 250)
+            // Start a moment after the music dips, so the first word isn't lost.
+            main.postDelayed({
+                val t = tts
+                parts.forEachIndexed { i, part ->
+                    if (i > 0 && t?.playSilentUtterance(PAUSE_MS, TextToSpeech.QUEUE_ADD, "gap${System.nanoTime()}") != TextToSpeech.SUCCESS) {
+                        pending = (pending - 1).coerceAtLeast(0)
+                    }
+                    if (t?.speak(part, TextToSpeech.QUEUE_ADD, params, "run${System.nanoTime()}") != TextToSpeech.SUCCESS) {
+                        pending = (pending - 1).coerceAtLeast(0)
+                    }
+                }
+                if (pending == 0) doneSpeaking()
+            }, 250)
         }
     }
 
