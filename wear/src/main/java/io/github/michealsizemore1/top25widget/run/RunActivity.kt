@@ -414,21 +414,26 @@ class RunActivity : Activity() {
             val box = this
             Thread {
                 val now = System.currentTimeMillis()
-                val runs = RunStore.list(this@RunActivity).filter { now - (it.nameWithoutExtension.toLongOrNull() ?: 0L) < 56 * 86_400_000L }
-                    .mapNotNull { RunStore.read(it) }
+                val allRuns = RunStore.list(this@RunActivity).mapNotNull { RunStore.read(it) }
+                val runs = allRuns.filter { now - it.optLong("start") < 56 * 86_400_000L }
+                // Personal bests from every run on the watch (and saved, so a new best is announced right away).
+                val recMap = io.github.michealsizemore1.top25widget.Insights.records(allRuns)
+                val recJson = org.json.JSONObject().also { o -> recMap.forEach { (k, v) -> o.put(k, org.json.JSONObject().put("sec", v.sec).put("start", v.start)) } }
+                prefs.edit().putString("pbRecords", recJson.toString()).apply()
                 val ld = io.github.michealsizemore1.top25widget.Insights.load(runs, now)
                 val (z2now, z2before) = io.github.michealsizemore1.top25widget.Insights.z2Trend(runs, Run.hrMax, Run.hrRest, now)
-                val rec = try { org.json.JSONObject(prefs.getString("pbRecords", null) ?: "{}") } catch (e: Exception) { org.json.JSONObject() }
+                val rec = recJson
                 runOnUiThread {
-                    if (runs.isEmpty()) return@runOnUiThread
+                    if (allRuns.isEmpty()) return@runOnUiThread
                     loadL.text = "Load: " + ld.status; loadL.setTextColor(ld.color)
                     loadS.text = "${ld.acute} stress this week" + (if (ld.ratio != null) " · usual ${ld.chronicWeek}" else "") +
                         String.format(java.util.Locale.US, " · %.1f mi", ld.milesWeek)
                     z2L.text = z2now?.let { n -> "Zone 2 pace " + io.github.michealsizemore1.top25widget.RunMath.paceFor(n, io.github.michealsizemore1.top25widget.RunMath.METERS_PER_MILE) +
                         (z2before?.let { b -> val d = b - n; if (d >= 0) " · ${d}s faster" else " · ${-d}s slower" } ?: "") } ?: ""
                     z2L.visibility = if (z2now == null) View.GONE else View.VISIBLE
-                    pbL.text = io.github.michealsizemore1.top25widget.Insights.PB_DISTANCES.mapNotNull { (k, _) -> rec.optJSONObject(k)?.let { io.github.michealsizemore1.top25widget.Insights.pbName(k).replace("Half marathon", "Half") + " " + io.github.michealsizemore1.top25widget.Insights.clock(it.optInt("sec")) } }
-                        .joinToString(" · ").let { if (it.isBlank()) "" else "PBs: $it" }
+                    pbL.text = io.github.michealsizemore1.top25widget.Insights.PB_DISTANCES.mapNotNull { (k, _) -> rec.optJSONObject(k)?.let { io.github.michealsizemore1.top25widget.Insights.pbName(k).replace("Half marathon", "Half") + "  " + io.github.michealsizemore1.top25widget.Insights.clock(it.optInt("sec")) } }
+                        .joinToString("\n").let { if (it.isBlank()) "" else "PERSONAL BESTS\n$it" }
+                    pbL.setTextColor(0xFFF2C94C.toInt())
                     pbL.visibility = if (pbL.text.isNullOrBlank()) View.GONE else View.VISIBLE
                     box.visibility = View.VISIBLE
                 }
