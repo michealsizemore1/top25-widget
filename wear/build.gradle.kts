@@ -13,7 +13,7 @@ android {
         minSdk = 30
         targetSdk = 34
         // Always above the phone app's number, so the watch app installs over a phone APK put on the watch by mistake.
-        versionCode = 300000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
+        versionCode = 700000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)   // above the phone's 600000+
         versionName = "3.0 · build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 
