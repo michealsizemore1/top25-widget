@@ -84,6 +84,11 @@ object RunSync {
                 tr.map { DataMapItem.fromDataItem(it).dataMap }.forEach { io.github.michealsizemore1.top25widget.TrailSync.apply(app, "watch", it) }
                 tr.release()
                 io.github.michealsizemore1.top25widget.Courses.pullAll(app, "watch")
+                for (path in listOf(io.github.michealsizemore1.top25widget.ReadinessSync.NIGHTS, io.github.michealsizemore1.top25widget.ReadinessSync.CHECKS)) {
+                    val r = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*$path")))
+                    r.map { DataMapItem.fromDataItem(it).dataMap }.forEach { io.github.michealsizemore1.top25widget.ReadinessSync.apply(app, path, it) }
+                    r.release()
+                }
                 val st = com.google.android.gms.tasks.Tasks.await(dc.getDataItems(Uri.parse("wear://*/phonestatus")))
                 st.map { DataMapItem.fromDataItem(it).dataMap }.firstOrNull()?.let { m ->
                     app.getSharedPreferences("phonestatus", 0).edit()
@@ -198,6 +203,12 @@ class RunSettingsListener : WearableListenerService() {
             // Course saved/removed on the phone.
             if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path?.startsWith(io.github.michealsizemore1.top25widget.Courses.PREFIX) == true) {
                 io.github.michealsizemore1.top25widget.Courses.apply(this, "watch", e.dataItem.uri.path ?: "", DataMapItem.fromDataItem(e.dataItem.freeze()).dataMap)
+                return@forEach
+            }
+            // Sleep from the phone (Health Connect) / morning checks.
+            if (e.type == DataEvent.TYPE_CHANGED && (e.dataItem.uri.path == io.github.michealsizemore1.top25widget.ReadinessSync.NIGHTS ||
+                    e.dataItem.uri.path == io.github.michealsizemore1.top25widget.ReadinessSync.CHECKS)) {
+                io.github.michealsizemore1.top25widget.ReadinessSync.apply(this, e.dataItem.uri.path ?: "", DataMapItem.fromDataItem(e.dataItem).dataMap)
                 return@forEach
             }
             // Trail chosen on the phone.

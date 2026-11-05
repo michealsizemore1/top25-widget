@@ -131,6 +131,10 @@ class RunReceiverService : WearableListenerService() {
         events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path?.startsWith(io.github.michealsizemore1.top25widget.Courses.PREFIX) == true }
             .map { it.dataItem.freeze() }
             .forEach { io.github.michealsizemore1.top25widget.Courses.apply(this, "phone", it.uri.path ?: "", DataMapItem.fromDataItem(it).dataMap) }
+        // Morning check made on the watch (and sleep, kept in step).
+        events.filter { it.type == DataEvent.TYPE_CHANGED && (it.dataItem.uri.path == io.github.michealsizemore1.top25widget.ReadinessSync.CHECKS ||
+                it.dataItem.uri.path == io.github.michealsizemore1.top25widget.ReadinessSync.NIGHTS) }
+            .forEach { io.github.michealsizemore1.top25widget.ReadinessSync.apply(this, it.dataItem.uri.path ?: "", DataMapItem.fromDataItem(it.dataItem).dataMap) }
         // Settings changed on the watch.
         events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == io.github.michealsizemore1.top25widget.SettingsSync.PATH }
             .forEach { io.github.michealsizemore1.top25widget.SettingsSync.apply(this, "runsettings", "phone", DataMapItem.fromDataItem(it.dataItem).dataMap) }
@@ -152,6 +156,7 @@ class RunReceiverService : WearableListenerService() {
                 PhoneStatus.push(this)
                 if (isNew) {
                     try { RunWeather.fill(this, json.optLong("start")) } catch (e: Exception) { }
+                    try { CpUpdate.afterRun(this) } catch (e: Exception) { }
                     notifyRun(json)
                     // (Automatic Stryd lookups are off: Stryd only has runs after an offline sync, which isn't used.)
                 }

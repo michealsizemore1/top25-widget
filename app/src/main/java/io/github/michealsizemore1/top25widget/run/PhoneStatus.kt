@@ -61,6 +61,8 @@ object PhoneStatus {
                     try { nm.notify(904, n) } catch (e: SecurityException) { }
                 }
             }
+            // Watch finished a morning check: send last night's sleep (needs background access to Health Connect).
+            "/cmd/sleep" -> Thread { SleepData.refresh(ctx.applicationContext, 7) }.start()
             "/cmd/livestart" -> Live.started(ctx)
             "/cmd/livealert" -> Live.alert(ctx, String(data))
             "/cmd/livedone" -> Live.done(ctx, String(data))

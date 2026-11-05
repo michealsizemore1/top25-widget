@@ -218,11 +218,16 @@ object Run {
     @Volatile var strapBattery = -1
     /** True while the chest strap is sending — its reading wins over the wrist. */
     val strapActive get() = useStrap && strapConnected && System.currentTimeMillis() - strapLastUpdate < 5000
+    /** Extra listener for beat-to-beat intervals (the morning HRV check). */
+    @Volatile var rrListener: ((Int) -> Unit)? = null
+    /** Today's readiness when the run started (saved with the run). */
+    @Volatile var readinessAtStart: org.json.JSONObject? = null
     private val rr = ArrayList<Int>()        // beat-to-beat intervals (ms) from the strap, for HRV
     private var strapSeconds = 0
 
     /** R-R interval from the strap. */
     fun onRr(ms: Int) {
+        rrListener?.invoke(ms)
         if (state == State.RUNNING && ms in 250..2000) synchronized(rr) { rr += ms }
     }
     @Volatile var strydConnected = false
@@ -589,6 +594,10 @@ object Run {
         // GPS track points: [lat, lon, moving s, elapsed s]
         put("samples", JSONArray().apply { samples.forEach { s -> put(JSONArray(s.toList())) } })
         if (track.isNotEmpty()) put("track", JSONArray().apply { track.forEach { p -> put(JSONArray(p.toList())) } })
+        readinessAtStart?.let { put("readiness", it) }
+        // Best power for 3–20 min (used for the critical-power estimate).
+        try { io.github.michealsizemore1.top25widget.CriticalPower.bests(this).takeIf { it.isNotEmpty() }?.let { b ->
+            put("mmp", JSONObject().apply { b.forEach { (k, v) -> put("$k", v) } }) } } catch (e: Exception) { }
     }
 
     // ---------------------------------------------------------------- formatting

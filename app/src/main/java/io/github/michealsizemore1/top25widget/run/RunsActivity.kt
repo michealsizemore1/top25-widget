@@ -47,6 +47,12 @@ class RunsActivity : Activity() {
         if (wrongDevice) return
         WorkoutStore.pushToWatch(this)   // keeps the watch's "today" plan current
         render()
+        // Last night's sleep from Samsung Health (via Health Connect), for the readiness score.
+        Thread {
+            if (System.currentTimeMillis() - io.github.michealsizemore1.top25widget.ReadinessSync.nightsAt(this) > 30 * 60_000L && SleepData.granted(this)) {
+                SleepData.refresh(this); runOnUiThread { if (!isFinishing) render() }
+            }
+        }.start()
     }
 
     /** The Command Center's "Send plan to Running app" opens scoresrun://localhost/plan#<days>. */
@@ -117,6 +123,20 @@ class RunsActivity : Activity() {
                 Triple(RunMath.miles(miles(monthStart)), "miles this month", Color.WHITE),
                 Triple("${runs.count { it.optLong("start") >= weekStart }}", "runs this week", Color.WHITE),
             )))
+        })
+
+        // Readiness: morning HRV check (watch) + sleep (Samsung Health) + recent training.
+        val rd = io.github.michealsizemore1.top25widget.Readiness.compute(io.github.michealsizemore1.top25widget.ReadinessSync.checks(this),
+            io.github.michealsizemore1.top25widget.ReadinessSync.nights(this), runs.take(120), io.github.michealsizemore1.top25widget.Readiness.today())
+        col.addView(RunUi.card(this).apply {
+            addView(RunUi.text(ctx, "READINESS", RunUi.MUTED, 11f, true))
+            if (rd == null) addView(RunUi.text(ctx, "Do the 2½-minute morning check on the watch ▸", RunUi.ACCENT, 15f, true))
+            else {
+                addView(RunUi.text(ctx, "${rd.score} · ${rd.label}" + (if (!rd.checkedToday) "  (no morning check)" else ""), rd.color, 20f, true))
+                addView(RunUi.text(ctx, rd.parts.joinToString(" · ") { "${it.name} ${it.value}" }, Color.WHITE, 12f))
+                addView(RunUi.text(ctx, rd.advice, RunUi.MUTED, 12f).apply { setPadding(0, dp(4), 0, 0) })
+            }
+            setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) }
         })
 
         // Command Center and LiveTrack (same buttons as the watch).
@@ -197,6 +217,10 @@ class RunsActivity : Activity() {
                         ld.ratio?.let { Triple(String.format(java.util.Locale.US, "%.1f", ld.milesAvg), "usual weekly miles", Color.WHITE) },
                     )))
                     addView(RunUi.text(ctx, ld.advice, RunUi.MUTED, 12f).apply { setPadding(0, dp(6), 0, 0) })
+                    val cpE = io.github.michealsizemore1.top25widget.CriticalPower.estimate(all)
+                    val cpNow = RunSettings.cp(ctx)
+                    addView(RunUi.text(ctx, "Critical power $cpNow W" + (cpE.cp?.let { if (kotlin.math.abs(it - cpNow) >= 3) " · your runs say $it W — tap to review" else " · matches your runs" } ?: " ▸"),
+                        0xFFB18CFF.toInt(), 13f, true).apply { setPadding(0, dp(8), 0, 0); setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) } })
                 })
                 // Zone 2 fitness: pace while HR is in Zone 2, run by run.
                 val z2 = all.mapNotNull { r -> io.github.michealsizemore1.top25widget.Insights.zone2(r, hrMax, hrRest)?.let { r.optLong("start") to it } }.take(12)

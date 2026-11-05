@@ -143,6 +143,7 @@ class RunActivity : Activity() {
         Run.listen(onRunChanged)
         // Coming back from History (which stopped the idle sensors): turn them on again.
         if (!RunService.running && screen != Screen.SUMMARY) RunService.start(this)
+        if (screen == Screen.START && !showSettings && !overlayOpen && !Run.isActive) startBuilt = false   // fresh readiness after a check
         render()
     }
     override fun onPause() {
@@ -279,6 +280,7 @@ class RunActivity : Activity() {
         set("track", if (Run.recordGpsTrack) "On" else "Off")
         set("trailMap", if (prefs.getBoolean("trailMapTiles", true)) "On" else "Off")
         set("textScale", when { prefs.getFloat("textScale", 1.25f) >= 1.45f -> "Extra large"; prefs.getFloat("textScale", 1.25f) >= 1.2f -> "Large"; else -> "Normal" } + " ▸")
+        set("cpauto", when (prefs.getString("cpAuto", "ask")) { "auto" -> "Automatically (raises only)"; "off" -> "Off"; else -> "Ask on the phone" })
         set("hrcap", when (Run.hrCapMode) { "off" -> "Off"; "all" -> "Easy days + free runs · under ${Run.hrCap}"; else -> "Easy days · under ${Run.hrCap}" })
         set("live", if (!prefs.getBoolean("liveOn", false)) "Off" else if (Run.isActive) "On · ${LiveTrack.status}" else "On")
         trackRow?.visibility = if (Run.source == Run.Source.STRYD) View.VISIBLE else View.GONE
@@ -386,6 +388,24 @@ class RunActivity : Activity() {
             }, lp(true))
         })
 
+        // Readiness (morning HRV check + sleep + recent training). Tap for details or to do the check.
+        col.addView(card().apply {
+            val head = label("READINESS", C.MUTED, 10f, true)
+            val big = label("", Color.WHITE, 16f, true); val sub = label("", C.MUTED, 10f)
+            addView(head); addView(big); addView(sub)
+            setOnClickListener { startActivity(Intent(this@RunActivity, MorningCheckActivity::class.java).putExtra("start", !Recovery.checkedToday(this@RunActivity))) }
+            Thread {
+                val r = try { Recovery.result(this@RunActivity) } catch (e: Exception) { null }
+                val checked = Recovery.checkedToday(this@RunActivity)
+                runOnUiThread {
+                    if (r != null && checked) { big.text = "${r.score} · ${r.label}"; big.setTextColor(r.color)
+                        sub.text = r.parts.filter { it.name == "HRV" || it.name == "Sleep" }.joinToString(" · ") { "${it.name} ${it.value}" } }
+                    else { big.text = "Morning check ▸"; big.setTextColor(C.ACCENT)
+                        sub.text = r?.let { "${it.score} · ${it.label} without HRV · 2½ min with your strap" } ?: "2½ min lying still with your strap" }
+                }
+            }.start()
+        })
+
         // Today's workout (tap to change).
         col.addView(card().apply {
             addView(label("TODAY", C.MUTED, 10f, true))
@@ -409,7 +429,8 @@ class RunActivity : Activity() {
             addView(label("TRENDS", C.MUTED, 10f, true))
             val loadL = label("", Color.WHITE, 13f, true); val loadS = label("", C.MUTED, 10f)
             val z2L = label("", Color.WHITE, 12f, true); val pbL = label("", C.MUTED, 10f)
-            addView(loadL); addView(loadS); addView(z2L); addView(pbL)
+            val cpL = label("", 0xFFB18CFF.toInt(), 11f, true).apply { visibility = View.GONE }
+            addView(loadL); addView(loadS); addView(z2L); addView(cpL); addView(pbL)
             val box = this
             Thread {
                 val now = System.currentTimeMillis()
@@ -422,6 +443,7 @@ class RunActivity : Activity() {
                 val ld = io.github.michealsizemore1.top25widget.Insights.load(runs, now)
                 val (z2now, z2before) = io.github.michealsizemore1.top25widget.Insights.z2Trend(runs, Run.hrMax, Run.hrRest, now)
                 val rec = recJson
+                val cpE = try { io.github.michealsizemore1.top25widget.CriticalPower.estimate(allRuns, now) } catch (e: Exception) { null }
                 runOnUiThread {
                     if (allRuns.isEmpty()) return@runOnUiThread
                     loadL.text = "Load: " + ld.status; loadL.setTextColor(ld.color)
@@ -433,6 +455,8 @@ class RunActivity : Activity() {
                     pbL.text = io.github.michealsizemore1.top25widget.Insights.PB_DISTANCES.mapNotNull { (k, _) -> rec.optJSONObject(k)?.let { io.github.michealsizemore1.top25widget.Insights.pbName(k).replace("Half marathon", "Half") + "  " + io.github.michealsizemore1.top25widget.Insights.clock(it.optInt("sec")) } }
                         .joinToString("\n").let { if (it.isBlank()) "" else "PERSONAL BESTS\n$it" }
                     pbL.setTextColor(0xFFF2C94C.toInt())
+                    cpL.text = "CP ${Run.criticalPower} W" + (cpE?.cp?.let { e -> if (kotlin.math.abs(e - Run.criticalPower) >= 3) " · runs say $e W" else " · matches your runs" } ?: "")
+                    cpL.visibility = View.VISIBLE
                     pbL.visibility = if (pbL.text.isNullOrBlank()) View.GONE else View.VISIBLE
                     box.visibility = View.VISIBLE
                 }
@@ -508,6 +532,7 @@ class RunActivity : Activity() {
         if (!RunService.running) RunService.start(this)
         RunService.instance?.connectStryd()   // a new run always wants the pod
         Run.start()
+        Run.readinessAtStart = try { Recovery.result(this)?.json() } catch (e: Exception) { null }
         // Open on your first data screen (the workout step and trail map are a swipe to the left).
         screen = Screen.LIVE; page = pageOrder().indexOf(100).takeIf { it >= 0 } ?: 1; liveBuilt = false
         render()
@@ -579,6 +604,10 @@ class RunActivity : Activity() {
             editNumber("CRITICAL POWER", Run.criticalPower.toDouble(), 1.0, 100.0, 600.0, { "${it.toInt()} W" }) {
                 Run.criticalPower = it.toInt(); prefs.edit().putInt("cp", Run.criticalPower).apply()
             }
+        })
+        col.addView(row("cpauto", "Update CP from your runs") {
+            val next = when (prefs.getString("cpAuto", "ask")) { "ask" -> "auto"; "auto" -> "off"; else -> "ask" }
+            prefs.edit().putString("cpAuto", next).apply(); renderStart()
         })
         col.addView(row("cal", "Stryd calibration") {
             editNumber("STRYD CALIBRATION", Run.strydCalibration, 0.005, 0.900, 1.100,

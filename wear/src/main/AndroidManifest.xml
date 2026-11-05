@@ -60,6 +60,13 @@
         </activity>
 
         <activity
+            android:name=".run.MorningCheckActivity"
+            android:exported="false"
+            android:label="Morning check"
+            android:theme="@style/RunTheme"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.run" />
+
+        <activity
             android:name=".run.RunHistoryActivity"
             android:exported="false"
             android:label="Run history"
@@ -75,6 +82,8 @@
                 <data android:scheme="wear" android:host="*" android:path="/phonestatus" />
                 <data android:scheme="wear" android:host="*" android:path="/runsettings" />
                 <data android:scheme="wear" android:host="*" android:path="/trail" />
+                <data android:scheme="wear" android:host="*" android:path="/nights" />
+                <data android:scheme="wear" android:host="*" android:path="/checks" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/course/" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/deleted/" />
             </intent-filter>

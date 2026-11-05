@@ -34,6 +34,14 @@ object Summary {
                 (if (t.optBoolean("completed")) " ✓ completed" else "")))
         }
 
+        run.optJSONObject("readiness")?.let { r ->
+            val parts = r.optJSONArray("parts")
+            section("READINESS (BEFORE RUN)", listOfNotNull(
+                "${r.optInt("score")} · ${r.optString("label")}",
+                parts?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.joinToString(" · ") { "${it.optString("name")} ${it.optString("value")}" } }?.ifBlank { null },
+            ))
+        }
+
         if (run.optInt("avgHr") > 0) section("HEART RATE (" + (if (run.optString("hrSource") == "strap") "chest strap" else "wrist") + ")",
             listOf("Avg ${run.optInt("avgHr")} · Max ${run.optInt("maxHr")} bpm") + zoneLines(run.optJSONArray("hrZoneSeconds")))
 

@@ -8,6 +8,13 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Sleep and heart rate that Samsung Health saves to Health Connect (for the readiness score). -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -56,6 +63,26 @@
             android:windowSoftInputMode="adjustResize"
             android:taskAffinity="io.github.michealsizemore1.top25widget.running" />
         <activity
+            android:name=".run.ReadinessActivity"
+            android:exported="true"
+            android:label="Readiness"
+            android:taskAffinity="io.github.michealsizemore1.top25widget.running">
+            <!-- Health Connect shows this as the app's privacy policy. -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".run.ReadinessActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+        <activity
             android:name=".run.LiveTrackActivity"
             android:exported="false"
             android:label="LiveTrack"
@@ -97,6 +124,8 @@
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/deleted/" />
                 <data android:scheme="wear" android:host="*" android:path="/runsettings" />
                 <data android:scheme="wear" android:host="*" android:path="/trail" />
+                <data android:scheme="wear" android:host="*" android:path="/checks" />
+                <data android:scheme="wear" android:host="*" android:path="/nights" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/course/" />
             </intent-filter>
             <intent-filter>
