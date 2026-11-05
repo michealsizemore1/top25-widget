@@ -50,7 +50,12 @@ object Readiness {
     /** One morning check. legs/sleepFeel: -1 not answered, 0 bad, 1 OK, 2 good. */
     data class Check(val day: String, val rmssd: Double, val hr: Int, val legs: Int = -1, val sleepFeel: Int = -1, val at: Long = 0L)
     /** One night of sleep, keyed by the day you woke up. sleepHr = average of the lowest heart rates overnight. */
-    data class Night(val day: String, val minutes: Int, val sleepHr: Int = 0)
+    data class Night(
+        val day: String, val minutes: Int, val sleepHr: Int = 0,
+        val manual: Boolean = false,  // time asleep entered by you (wins over the watch's number)
+        val auto: Int = 0,            // what the watch measured (kept so you can go back to it)
+        val editAt: Long = 0L,        // when you last changed it (newest edit wins between phone and watch)
+    )
 
     fun checksFrom(s: String?): List<Check> = try {
         val a = JSONArray(s ?: "[]")
@@ -71,11 +76,14 @@ object Readiness {
 
     fun nightsFrom(s: String?): List<Night> = try {
         val a = JSONArray(s ?: "[]")
-        (0 until a.length()).map { a.getJSONObject(it) }.map { Night(it.getString("day"), it.optInt("min"), it.optInt("hr")) }
+        (0 until a.length()).map { a.getJSONObject(it) }.map {
+            Night(it.getString("day"), it.optInt("min"), it.optInt("hr"), it.optBoolean("man"), it.optInt("auto", it.optInt("min")), it.optLong("edit"))
+        }
     } catch (e: Exception) { emptyList() }
 
     fun nightsJson(l: List<Night>) = JSONArray().apply {
-        l.sortedBy { it.day }.takeLast(90).forEach { put(JSONObject().put("day", it.day).put("min", it.minutes).put("hr", it.sleepHr)) }
+        l.sortedBy { it.day }.takeLast(90).forEach { put(JSONObject().put("day", it.day).put("min", it.minutes).put("hr", it.sleepHr)
+            .put("man", it.manual).put("auto", it.auto).put("edit", it.editAt)) }
     }.toString()
 
     // ---------------------------------------------------------------- the score
@@ -145,9 +153,9 @@ object Readiness {
         val night = nights.lastOrNull { it.day == today && it.minutes > 0 }
         if (night != null) {
             val m = night.minutes
-            parts += Part("Sleep", hmm(m), clamp(15 + (m - 240) * 85.0 / 210), when {
+            parts += Part("Sleep", hmm(m) + (if (night.manual) " ✎" else ""), clamp(15 + (m - 240) * 85.0 / 210), when {
                 m >= 450 -> "great"; m >= 400 -> "good"; m >= 330 -> "a bit short"; else -> "short — recovery suffers"
-            }, 25)
+            } + (if (night.manual) " (entered by you)" else ""), 25)
         } else if (todayCheck != null && todayCheck.sleepFeel >= 0) {
             parts += Part("Sleep", listOf("Poor", "OK", "Good")[todayCheck.sleepFeel], listOf(35, 70, 95)[todayCheck.sleepFeel], "how you said you slept", 25)
         }

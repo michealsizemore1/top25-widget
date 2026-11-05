@@ -62,24 +62,38 @@ object SleepData {
             }
             val asleep = setOf(SleepSessionRecord.STAGE_TYPE_SLEEPING, SleepSessionRecord.STAGE_TYPE_LIGHT,
                 SleepSessionRecord.STAGE_TYPE_DEEP, SleepSessionRecord.STAGE_TYPE_REM)
-            val byDay = sessions.groupBy { it.endTime.atZone(zone).toLocalDate().toString() }
-            val nights = byDay.map { (day, list) ->
-                // Main sleep (3 h+); naps alone only if that's all there is.
-                // If two apps logged the same night (e.g. Garmin and Samsung), keep the longest and skip any that overlap it.
-                val main = ArrayList<SleepSessionRecord>()
-                list.filter { ChronoUnit.MINUTES.between(it.startTime, it.endTime) >= 180 }
-                    .ifEmpty { listOf(list.maxBy { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }) }
-                    .sortedByDescending { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }
-                    .forEach { s -> if (main.none { m -> s.startTime < m.endTime && m.startTime < s.endTime }) main += s }
-                val minutes = main.sumOf { s ->
-                    if (s.stages.isNotEmpty()) s.stages.filter { it.stage in asleep }.sumOf { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }
-                    else ChronoUnit.MINUTES.between(s.startTime, s.endTime)
-                }.toInt()
+            // One night = every session that's within 2 hours of the next (a bathroom trip often splits the
+            // night in two). Time asleep = asleep stages (or whole sessions) with overlaps counted once,
+            // so two apps logging the same night don't double it.
+            fun asleepSpans(s: SleepSessionRecord): List<Pair<Instant, Instant>> =
+                if (s.stages.isNotEmpty()) s.stages.filter { it.stage in asleep }.map { it.startTime to it.endTime }
+                else listOf(s.startTime to s.endTime)
+            val groups = ArrayList<MutableList<SleepSessionRecord>>()
+            sessions.sortedBy { it.startTime }.forEach { s ->
+                val g = groups.lastOrNull()
+                if (g != null && ChronoUnit.MINUTES.between(g.maxOf { it.endTime }, s.startTime) <= 120) g += s else groups += mutableListOf(s)
+            }
+            fun minutesOf(g: List<SleepSessionRecord>): Long {
+                val spans = g.flatMap { asleepSpans(it) }.sortedBy { it.first }
+                if (spans.isEmpty()) return 0L
+                var total = 0L; var curS = spans[0].first; var curE = spans[0].second
+                for ((a, b) in spans.drop(1)) {
+                    if (a > curE) { total += ChronoUnit.MINUTES.between(curS, curE); curS = a; curE = b }
+                    else if (b > curE) curE = b
+                }
+                return total + ChronoUnit.MINUTES.between(curS, curE)
+            }
+            val byDay = groups.groupBy { g -> g.maxOf { it.endTime }.atZone(zone).toLocalDate().toString() }
+            val nights = byDay.map { (day, gs) ->
+                // The main night (longest); naps on their own only if that's all there is.
+                val main = gs.maxBy { minutesOf(it) }
+                val minutes = minutesOf(main).toInt()
+                val first = main.minOf { it.startTime }; val last = main.maxOf { it.endTime }
                 // Sleeping heart rate: the average of the lowest quarter of readings (recent nights only).
-                val hr = if (ChronoUnit.DAYS.between(main.first().endTime, end) <= 14) try {
-                    val bpm = main.flatMap { s -> runBlocking {
-                        client.readRecords(ReadRecordsRequest(HeartRateRecord::class, TimeRangeFilter.between(s.startTime, s.endTime))).records
-                    }.flatMap { r -> r.samples.map { it.beatsPerMinute.toInt() } } }.filter { it in 30..150 }.sorted()
+                val hr = if (ChronoUnit.DAYS.between(last, end) <= 14) try {
+                    val bpm = runBlocking {
+                        client.readRecords(ReadRecordsRequest(HeartRateRecord::class, TimeRangeFilter.between(first, last))).records
+                    }.flatMap { r -> r.samples.map { it.beatsPerMinute.toInt() } }.filter { it in 30..150 }.sorted()
                     if (bpm.size >= 4) bpm.take(maxOf(2, bpm.size / 4)).average().toInt() else 0
                 } catch (e: Exception) { 0 } else 0
                 Readiness.Night(day, minutes, hr)
@@ -244,13 +258,17 @@ class ReadinessActivity : Activity() {
                 else -> {
                     nights.reversed().forEach { n ->
                         addView(LinearLayout(ctx).apply {
-                            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(3), 0, dp(3))
+                            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, dp(6))
+                            setOnClickListener { editSleep(n.day) }
                             addView(RunUi.text(ctx, java.time.LocalDate.parse(n.day).let { it.dayOfWeek.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() } + " " + it.monthValue + "/" + it.dayOfMonth },
                                 RunUi.MUTED, 14f), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                            addView(RunUi.text(ctx, Readiness.hmm(n.minutes) + (if (n.sleepHr > 0) " · ${n.sleepHr} bpm" else ""), Color.WHITE, 14f, true))
+                            addView(RunUi.text(ctx, (if (n.manual) "✎ " else "") + Readiness.hmm(n.minutes) + (if (n.sleepHr > 0) " · ${n.sleepHr} bpm" else ""),
+                                if (n.manual) RunUi.ACCENT else Color.WHITE, 14f, true))
                         })
                     }
-                    addView(RunUi.text(ctx, "Time asleep · sleeping heart rate. Sent to the watch for the readiness score.", RunUi.DIM, 11f).apply { setPadding(0, dp(4), 0, 0) })
+                    if (nights.none { it.day == Readiness.today() }) addView(RunUi.button(ctx, "Enter last night's sleep", RunUi.CARD, Color.WHITE) { editSleep(Readiness.today()) }
+                        .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) } })
+                    addView(RunUi.text(ctx, "Time asleep · sleeping heart rate. Tap a night to fix the time (e.g. a bathroom trip counted as awake). ✎ = entered by you.", RunUi.DIM, 11f).apply { setPadding(0, dp(4), 0, 0) })
                 }
             }
         })
@@ -313,6 +331,29 @@ class ReadinessActivity : Activity() {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
+    }
+
+    /** Hours + minutes pickers for one night's time asleep. */
+    private fun editSleep(day: String) {
+        val n = ReadinessSync.nights(this).firstOrNull { it.day == day }
+        val cur = n?.minutes?.takeIf { it > 0 } ?: 420
+        val dp = { v: Int -> RunUi.dp(this, v) }
+        val h = android.widget.NumberPicker(this).apply { minValue = 0; maxValue = 14; value = cur / 60 }
+        val mins = (0..55 step 5).map { String.format(java.util.Locale.US, "%02d", it) }.toTypedArray()
+        val m = android.widget.NumberPicker(this).apply { minValue = 0; maxValue = mins.size - 1; displayedValues = mins; value = (cur % 60) / 5 }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER; setPadding(dp(16), dp(8), dp(16), 0)
+            addView(h); addView(android.widget.TextView(context).apply { text = " h   " }); addView(m); addView(android.widget.TextView(context).apply { text = " min" })
+        }
+        val date = java.time.LocalDate.parse(day)
+        val b = android.app.AlertDialog.Builder(this)
+            .setTitle("Time asleep · ${date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }} ${date.monthValue}/${date.dayOfMonth}")
+            .setMessage(if (n != null && n.auto > 0) "The watch measured ${Readiness.hmm(n.auto)}." else "Enter how long you slept.")
+            .setView(row)
+            .setPositiveButton("Save") { _, _ -> ReadinessSync.setManual(this, day, h.value * 60 + m.value * 5); render() }
+            .setNegativeButton("Cancel", null)
+        if (n?.manual == true && n.auto > 0) b.setNeutralButton("Use watch's ${Readiness.hmm(n.auto)}") { _, _ -> ReadinessSync.setManual(this, day, null); render() }
+        b.show()
     }
 
     private fun dot(pts: Int) = when { pts >= 70 -> Readiness.GREEN; pts >= 50 -> Readiness.YELLOW; else -> Readiness.RED }

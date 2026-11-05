@@ -102,10 +102,31 @@ class MorningCheckActivity : Activity() {
         if (mr != null && kotlin.math.abs(mr.first - cur) >= 1) col.addView(button("Use ${f(mr.first)} for zones", CARD, Color.WHITE) {
             p.edit().putFloat("hrRest", mr.first.toFloat()).apply(); Run.hrRest = mr.first; summary()
         })
-        val nights = ReadinessSync.nights(this)
-        col.addView(label(if (nights.isEmpty()) "Sleep comes from Garmin Connect or Samsung Health via the phone app (Readiness → Connect sleep)." else
-            "Sleep · last night " + (nights.lastOrNull { it.day == Readiness.today() }?.let { Readiness.hmm(it.minutes) } ?: "not in yet"),
-            MUTED, 9f).apply { setPadding(0, dp(6), 0, 0) })
+        val last = ReadinessSync.nights(this).lastOrNull { it.day == Readiness.today() }
+        col.addView(button("Sleep: " + (last?.let { (if (it.manual) "✎ " else "") + Readiness.hmm(it.minutes) } ?: "not in yet") + " · edit", CARD, Color.WHITE) { editSleep() })
+        col.addView(label("Fix it if a bathroom trip was counted as awake.", MUTED, 9f).apply { setPadding(0, dp(4), 0, 0) })
+    }
+
+    /** Last night's time asleep: ± 15 min steps, or back to what the watch measured. */
+    private fun editSleep() {
+        val day = Readiness.today()
+        val n = ReadinessSync.nights(this).firstOrNull { it.day == day }
+        var mins = n?.minutes?.takeIf { it > 0 } ?: 420
+        page { col ->
+            col.addView(label("TIME ASLEEP", MUTED, 10f, true))
+            val v = label(Readiness.hmm(mins), ACCENT, 26f, true); col.addView(v)
+            if (n != null && n.auto > 0) col.addView(label("Watch measured ${Readiness.hmm(n.auto)}", MUTED, 10f))
+            col.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+                fun step(t: String, d: Int) = button(t, CARD, Color.WHITE) { mins = (mins + d).coerceIn(0, 14 * 60); v.text = Readiness.hmm(mins) }
+                addView(step("−15m", -15), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { marginEnd = dp(4) })
+                addView(step("+15m", 15), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            })
+            col.addView(button("Save", ACCENT, Color.BLACK) { ReadinessSync.setManual(this, day, mins); summary() })
+            if (n?.manual == true && n.auto > 0) col.addView(button("Use watch's ${Readiness.hmm(n.auto)}", CARD, Color.WHITE) { ReadinessSync.setManual(this, day, null); summary() })
+            col.addView(button("Cancel", CARD, Color.WHITE) { summary() })
+        }
     }
 
     private fun intro() = page { col ->

@@ -24,11 +24,25 @@ object ReadinessSync {
         push(ctx, CHECKS, Readiness.checksJson(l))
     }
 
+    /** Nights read from Health Connect. A time you entered yourself is kept (the watch's number is saved beside it). */
     fun setNights(ctx: Context, l: List<Readiness.Night>) {
-        val merged = (nights(ctx).filter { n -> l.none { it.day == n.day } } + l).sortedBy { it.day }
+        val old = nights(ctx).associateBy { it.day }
+        val fresh = l.map { n -> old[n.day]?.takeIf { it.manual }?.copy(auto = n.minutes, sleepHr = n.sleepHr) ?: n.copy(auto = n.minutes, editAt = old[n.day]?.editAt ?: 0L) }
+        val merged = (nights(ctx).filter { n -> fresh.none { it.day == n.day } } + fresh).sortedBy { it.day }
         p(ctx).edit().putString("nights", Readiness.nightsJson(merged)).putLong("nightsAt", System.currentTimeMillis()).apply()
         push(ctx, NIGHTS, Readiness.nightsJson(merged))
     }
+    /** Enter time asleep yourself (minutes), or null to go back to what the watch measured. */
+    fun setManual(ctx: Context, day: String, minutes: Int?) {
+        val l = nights(ctx); val cur = l.firstOrNull { it.day == day }
+        val now = System.currentTimeMillis()
+        val n = if (minutes == null) (cur ?: return).let { it.copy(minutes = it.auto, manual = false, editAt = now) }
+            else (cur ?: Readiness.Night(day, 0)).let { it.copy(minutes = minutes, manual = true, editAt = now) }
+        val merged = (l.filter { it.day != day } + n).filter { it.minutes > 0 || it.manual }.sortedBy { it.day }
+        p(ctx).edit().putString("nights", Readiness.nightsJson(merged)).apply()
+        push(ctx, NIGHTS, Readiness.nightsJson(merged))
+    }
+
     fun nightsAt(ctx: Context) = p(ctx).getLong("nightsAt", 0L)
 
     /** Data from the other device. */
@@ -42,8 +56,13 @@ object ReadinessSync {
                 p(ctx).edit().putString("checks", Readiness.checksJson(merged)).apply()
             }
             NIGHTS -> {
-                val theirs = Readiness.nightsFrom(s)
-                val merged = (nights(ctx).filter { n -> theirs.none { it.day == n.day } } + theirs).sortedBy { it.day }
+                val theirs = Readiness.nightsFrom(s).associateBy { it.day }
+                val mine = nights(ctx).associateBy { it.day }
+                // Newest edit wins; otherwise the other device's (newer) reading.
+                val merged = (mine.keys + theirs.keys).map { d ->
+                    val m = mine[d]; val t = theirs[d]
+                    when { t == null -> m!!; m == null -> t; m.editAt > t.editAt -> m.copy(auto = t.auto, sleepHr = maxOf(t.sleepHr, m.sleepHr)); else -> t }
+                }.sortedBy { it.day }
                 p(ctx).edit().putString("nights", Readiness.nightsJson(merged)).putLong("nightsAt", System.currentTimeMillis()).apply()
             }
         }
