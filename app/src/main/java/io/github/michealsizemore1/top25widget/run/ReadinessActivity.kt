@@ -30,8 +30,8 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 /**
- * Sleep from Samsung Health. Samsung Health copies each night's sleep into Health Connect
- * (Samsung Health → Settings → Health Connect); this reads it and sends it to the watch.
+ * Sleep from Health Connect — written there by Garmin Connect (if you sleep in the Garmin)
+ * or Samsung Health. This reads it and sends it to the watch.
  */
 object SleepData {
     private const val BACKGROUND = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
@@ -65,7 +65,12 @@ object SleepData {
             val byDay = sessions.groupBy { it.endTime.atZone(zone).toLocalDate().toString() }
             val nights = byDay.map { (day, list) ->
                 // Main sleep (3 h+); naps alone only if that's all there is.
-                val main = list.filter { ChronoUnit.MINUTES.between(it.startTime, it.endTime) >= 180 }.ifEmpty { listOf(list.maxBy { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }) }
+                // If two apps logged the same night (e.g. Garmin and Samsung), keep the longest and skip any that overlap it.
+                val main = ArrayList<SleepSessionRecord>()
+                list.filter { ChronoUnit.MINUTES.between(it.startTime, it.endTime) >= 180 }
+                    .ifEmpty { listOf(list.maxBy { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }) }
+                    .sortedByDescending { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }
+                    .forEach { s -> if (main.none { m -> s.startTime < m.endTime && m.startTime < s.endTime }) main += s }
                 val minutes = main.sumOf { s ->
                     if (s.stages.isNotEmpty()) s.stages.filter { it.stage in asleep }.sumOf { ChronoUnit.MINUTES.between(it.startTime, it.endTime) }
                     else ChronoUnit.MINUTES.between(s.startTime, s.endTime)
@@ -194,7 +199,7 @@ class ReadinessActivity : Activity() {
         }
 
         // Sleep from Samsung Health.
-        col.addView(RunUi.section(this, "SLEEP (SAMSUNG HEALTH)"))
+        col.addView(RunUi.section(this, "SLEEP (GARMIN OR SAMSUNG, VIA HEALTH CONNECT)"))
         col.addView(RunUi.card(this).apply {
             val nights = ReadinessSync.nights(ctx).takeLast(7)
             when {
@@ -205,13 +210,14 @@ class ReadinessActivity : Activity() {
                     })
                 }
                 nights.isEmpty() || !SleepData.granted(ctx) -> {
-                    addView(RunUi.text(ctx, "Let BeyondStride read sleep and heart rate that Samsung Health saves to Health Connect. " +
-                        "In Samsung Health: Settings → Health Connect → allow it to write Sleep and Heart rate.", RunUi.MUTED, 13f))
+                    addView(RunUi.text(ctx, "Let BeyondStride read the sleep and heart rate your sleep watch saves to Health Connect. " +
+                        "Garmin: in Garmin Connect, turn on Health Connect under connected apps and allow Sleep and Heart rate. " +
+                        "Samsung: Samsung Health → Settings → Health Connect.", RunUi.MUTED, 13f))
                     addView(RunUi.button(ctx, "Connect sleep", RunUi.ACCENT) {
                         try { @Suppress("DEPRECATION") startActivityForResult(SleepData.requestIntent(ctx), 50) }
                         catch (e: Exception) { Toast.makeText(ctx, "Couldn't open Health Connect: ${e.message}", Toast.LENGTH_LONG).show() }
                     }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
-                    if (SleepData.granted(ctx)) addView(RunUi.text(ctx, "Connected — no nights found yet. Check Samsung Health's Health Connect setting.", RunUi.POWER, 12f).apply { setPadding(0, dp(6), 0, 0) })
+                    if (SleepData.granted(ctx)) addView(RunUi.text(ctx, "Connected — no nights found yet. Check that Garmin Connect (or Samsung Health) is sharing Sleep with Health Connect.", RunUi.POWER, 12f).apply { setPadding(0, dp(6), 0, 0) })
                 }
                 else -> {
                     nights.reversed().forEach { n ->

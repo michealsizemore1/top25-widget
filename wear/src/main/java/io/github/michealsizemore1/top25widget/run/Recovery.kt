@@ -93,8 +93,8 @@ class MorningCheckActivity : Activity() {
         }
         col.addView(button(if (Recovery.checkedToday(this)) "Check again" else "Morning check · 2½ min", ACCENT, Color.BLACK) { intro() })
         val nights = ReadinessSync.nights(this)
-        col.addView(label(if (nights.isEmpty()) "Sleep comes from Samsung Health via the phone app (Readiness → Connect)." else
-            "Sleep from Samsung Health · last night " + (nights.lastOrNull { it.day == Readiness.today() }?.let { Readiness.hmm(it.minutes) } ?: "not in yet"),
+        col.addView(label(if (nights.isEmpty()) "Sleep comes from Garmin Connect or Samsung Health via the phone app (Readiness → Connect sleep)." else
+            "Sleep · last night " + (nights.lastOrNull { it.day == Readiness.today() }?.let { Readiness.hmm(it.minutes) } ?: "not in yet"),
             MUTED, 9f).apply { setPadding(0, dp(6), 0, 0) })
     }
 
