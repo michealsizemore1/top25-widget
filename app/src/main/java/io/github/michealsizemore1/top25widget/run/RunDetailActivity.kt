@@ -147,9 +147,10 @@ class RunDetailActivity : Activity() {
         }
 
         // Stryd metrics (from your Stryd account).
-        col.addView(RunUi.section(this, "STRYD"))
+        // Stryd's own metrics: only shown when a run actually has them (needs Stryd offline sync).
         val s = run.optJSONObject("stryd")
         if (s != null) {
+            col.addView(RunUi.section(this, "STRYD"))
             fun d(k: String) = s.optDouble(k).takeIf { !it.isNaN() }
             col.addView(RunUi.card(this).apply {
                 addView(RunUi.statGrid(ctx, listOfNotNull(
@@ -170,18 +171,6 @@ class RunDetailActivity : Activity() {
                     setPadding(0, dp(8), 0, 0); setOnClickListener { fetchStryd() }
                 })
             })
-        } else if (StrydCloud.connected(this)) {
-            col.addView(RunUi.card(this).apply {
-                addView(RunUi.text(ctx, "Not found in Stryd yet. Open the Stryd app so the pod syncs, then tap below " +
-                    "(the phone also keeps checking on its own for a few hours).", RunUi.MUTED, 13f))
-                addView(RunUi.button(ctx, "Get Stryd data", RunUi.STRYD, Color.WHITE) { fetchStryd() }.apply {
-                    layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(10) }
-                })
-            })
-        } else {
-            col.addView(RunUi.button(this, "Connect Stryd for ground time, oscillation, leg spring, RSS…", RunUi.STRYD, Color.WHITE) {
-                startActivity(Intent(ctx, RunSettingsActivity::class.java))
-            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
         }
 
         // Charts.

@@ -153,7 +153,7 @@ class RunReceiverService : WearableListenerService() {
                 if (isNew) {
                     try { RunWeather.fill(this, json.optLong("start")) } catch (e: Exception) { }
                     notifyRun(json)
-                    if (StrydCloud.autoFetch(this) && StrydCloud.connected(this)) StrydWorker.enqueue(this, json.optLong("start"))
+                    // (Automatic Stryd lookups are off: Stryd only has runs after an offline sync, which isn't used.)
                 }
             } catch (e: Exception) { android.util.Log.w("RunReceiver", "run sync failed", e) }
         }
