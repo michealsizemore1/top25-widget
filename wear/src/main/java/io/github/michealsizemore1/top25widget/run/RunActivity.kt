@@ -361,7 +361,8 @@ class RunActivity : Activity() {
                 }
             }
             val cc = ps.getInt("ccUnsent", 0)
-            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { if (!last) marginEnd = dp(4) } }
+            // Both buttons fill the row's height, so they're always the same size.
+            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { if (!last) marginEnd = dp(4) } }
             addView(pill("Command Center", if (ps.contains("at")) (if (cc == 0) "✓ sent" else "Send $cc") else "—", 0xFF7B61FF.toInt(), "/cmd/cc",
                 "Tap the notification on your phone"), lp(false))
             // LiveTrack on/off for the next run (same switch as Settings and the phone).
