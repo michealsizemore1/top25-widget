@@ -12,10 +12,10 @@ android {
         applicationId = "io.github.michealsizemore1.top25widget"
         minSdk = 26
         targetSdk = 35
-        // Phone 600000+, watch 700000+ (both above any earlier build). The watch number is higher, so the
+        // Phone 800000+, watch 900000+ (both above any earlier build). The watch number is higher, so the
         // phone file can't install over the watch app (it's refused as a "downgrade"); the phone app also
         // shows a "wrong device" message if the watch file is ever installed on the phone.
-        versionCode = 600000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
+        versionCode = 800000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
         versionName = "5.0 · build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 
