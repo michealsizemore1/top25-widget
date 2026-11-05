@@ -77,7 +77,6 @@ class RunSettingsActivity : Activity() {
         switch("Chest strap (H10) with wrist backup", "Off = watch wrist sensor only", RunSettings.bool(this, "useStrap")) { RunSettings.setBool(ctx, "useStrap", it) }
         switch("Keep watch screen on in BeyondStride", "", RunSettings.bool(this, "keepOn")) { RunSettings.setBool(ctx, "keepOn", it) }
         switch("Bottom button: start · lap · double-press finish", "", RunSettings.bool(this, "bottomBtn")) { RunSettings.setBool(ctx, "bottomBtn", it) }
-        switch("Gestures: double-tap = lap · hold = finish", "", RunSettings.bool(this, "gestures")) { RunSettings.setBool(ctx, "gestures", it) }
 
         // ---- watch text size (same setting as on the watch)
         col.addView(RunUi.card(this).apply {
@@ -179,7 +178,7 @@ class RunSettingsActivity : Activity() {
 
         // (Stryd account sign-in removed: Stryd only has runs after the pod's offline sync, which isn't used.
         //  The pod itself still pairs with the watch for pace, distance, power and cadence.)
-        if (StrydCloud.connected(this)) StrydCloud.signOut(this)   // don't keep an unused password/token on the phone
+        getSharedPreferences("strydcloud", 0).edit().clear().apply()   // forget any old Stryd login
 
         // ---- Versions
         col.addView(RunUi.section(this, "APP VERSIONS"))

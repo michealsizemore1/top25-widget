@@ -25,7 +25,6 @@ object PhoneStatus {
             try {
                 val req = PutDataMapRequest.create("/phonestatus").apply {
                     dataMap.putInt("ccUnsent", unsentCc(app).size)
-                    dataMap.putBoolean("stryd", StrydCloud.connected(app))
                     dataMap.putInt("runs", PhoneRuns.list(app).size)
                 }.asPutDataRequest().setUrgent()
                 Tasks.await(Wearable.getDataClient(app).putDataItem(req))
@@ -65,13 +64,6 @@ object PhoneStatus {
             "/cmd/livestart" -> Live.started(ctx)
             "/cmd/livealert" -> Live.alert(ctx, String(data))
             "/cmd/livedone" -> Live.done(ctx, String(data))
-            "/cmd/stryd" -> {
-                if (!StrydCloud.connected(ctx)) {
-                    notify(ctx, 903, "Stryd isn't connected", "Tap to sign in to Stryd in Run settings",
-                        Intent(ctx, RunSettingsActivity::class.java))
-                } else PhoneRuns.list(ctx).mapNotNull { PhoneRuns.read(it) }.filter { !it.has("stryd") }
-                    .forEach { StrydWorker.enqueue(ctx, it.optLong("start"), delayMinutes = 0) }
-            }
         }
         push(ctx)
     }

@@ -167,9 +167,6 @@ class RunDetailActivity : Activity() {
                     d("temp")?.let { Triple("${Math.round(it * 9 / 5 + 32)}°", "temp °F", Color.WHITE) },
                     d("humidity")?.let { Triple("${it.toInt()}%", "humidity", Color.WHITE) },
                 )))
-                addView(RunUi.text(ctx, "Refresh from Stryd", RunUi.MUTED, 13f, true).apply {
-                    setPadding(0, dp(8), 0, 0); setOnClickListener { fetchStryd() }
-                })
             })
         }
 
@@ -291,11 +288,6 @@ class RunDetailActivity : Activity() {
             })
         }
 
-        col.addView(RunUi.text(this, "Share run file (TCX)", RunUi.ACCENT, 14f, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(24), 0, 0)
-            setOnClickListener { shareTcx(run) }
-        })
         col.addView(RunUi.text(this, "Delete this run", 0xFFE5484D.toInt(), 14f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(24), 0, 0)
@@ -311,34 +303,5 @@ class RunDetailActivity : Activity() {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
-    }
-
-    private fun fetchStryd() {
-        Toast.makeText(this, "Checking Stryd…", Toast.LENGTH_SHORT).show()
-        Thread {
-            val msg = try {
-                val run = PhoneRuns.read(this, start) ?: return@Thread
-                val m = StrydCloud.fetchFor(this, run)
-                if (m == null) "Stryd doesn't have this run yet — open the Stryd app to sync the pod"
-                else {
-                    StrydCloud.attach(this, start, m)
-                    "Stryd data added"
-                }
-            } catch (e: Exception) { "Stryd: ${e.message}" }
-            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show(); PhoneRuns.read(this, start)?.let { render(it) } }
-        }.start()
-    }
-
-    private fun shareTcx(run: JSONObject) {
-        val dir = java.io.File(cacheDir, "tcx").apply { mkdirs() }
-        val f = java.io.File(dir, "run-${SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date(run.optLong("start")))}.tcx")
-        f.writeText(Tcx.build(run))
-        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type = "application/vnd.garmin.tcx+xml"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, PhoneRuns.title(run))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }, "Share run file"))
     }
 }

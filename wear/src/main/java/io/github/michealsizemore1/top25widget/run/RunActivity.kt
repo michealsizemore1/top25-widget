@@ -230,7 +230,6 @@ class RunActivity : Activity() {
         }
         set("screensRow", "${screens.length()} screens ▸", C.ACCENT)
         set("voiceRow", (if (prefs.getBoolean("voice", true)) "On" else "Off") + " ▸", C.ACCENT)
-        set("quickBtn", if (prefs.getBoolean("gestures", true)) "On" else "Off")
         set("bottomBtn", if (prefs.getBoolean("bottomBtn", true)) "On" else "Off")
         set("keepOn", if (prefs.getBoolean("keepOn", true)) "On" else "Off")
         set("source", if (Run.source == Run.Source.STRYD) "Stryd ▸" else "GPS ▸", C.ACCENT)
@@ -558,12 +557,6 @@ class RunActivity : Activity() {
             prefs.edit().putBoolean("keepOn", on).apply()
             if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        })
-        col.addView(row("quickBtn", "Run gestures: double-tap = lap · hold = finish") {
-            prefs.edit().putBoolean("gestures", !prefs.getBoolean("gestures", true)).apply()
-        }.apply {
-            addView(label("Anywhere on a run screen: double-tap for a lap (next step in a workout); press and hold " +
-                "about a second to pause and open Finish (big SAVE / RESUME).", C.MUTED, 9f))
         })
         col.addView(row("source", "Pace & distance") {
             Run.source = if (Run.source == Run.Source.STRYD) Run.Source.GPS else Run.Source.STRYD
@@ -1257,11 +1250,11 @@ class RunActivity : Activity() {
             }
             // Anywhere on a data screen: double-tap = lap, press and hold = finish.
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (!onDataScreen() || !prefs.getBoolean("gestures", true)) return false
+                if (!onDataScreen() || true /* screen gestures retired — the bottom button does lap/finish */) return false
                 lapNow(); return true
             }
             override fun onLongPress(e: MotionEvent) {
-                if (!onDataScreen() || !prefs.getBoolean("gestures", true)) return
+                if (!onDataScreen() || true /* screen gestures retired — the bottom button does lap/finish */) return
                 openFinish()
             }
         })

@@ -26,6 +26,12 @@ class RunsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (io.github.michealsizemore1.top25widget.WrongDevice.check(this, isWatchApp = false)) { wrongDevice = true; return }
+        // One-time cleanup: cancel any leftover background Stryd lookups from older versions.
+        getSharedPreferences("runflags", 0).let { f -> if (!f.getBoolean("strydJobsCleared", false)) {
+            try { val wm = androidx.work.WorkManager.getInstance(this)
+                PhoneRuns.list(this).forEach { wm.cancelUniqueWork("stryd-" + it.nameWithoutExtension) } } catch (e: Exception) { }
+            f.edit().putBoolean("strydJobsCleared", true).apply()
+        } }
         handleLink(intent)
         // Clear the sign-in left from the removed Strava connection.
         try { deleteSharedPreferences("strava") } catch (e: Exception) { }
