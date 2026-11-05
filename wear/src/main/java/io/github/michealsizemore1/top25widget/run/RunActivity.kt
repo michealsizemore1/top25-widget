@@ -443,7 +443,7 @@ class RunActivity : Activity() {
                 val ld = io.github.michealsizemore1.top25widget.Insights.load(runs, now)
                 val (z2now, z2before) = io.github.michealsizemore1.top25widget.Insights.z2Trend(runs, Run.hrMax, Run.hrRest, now)
                 val rec = recJson
-                val cpE = try { io.github.michealsizemore1.top25widget.CriticalPower.estimate(allRuns, now) } catch (e: Exception) { null }
+                val cpE = try { io.github.michealsizemore1.top25widget.CriticalPower.estimate(allRuns, now, currentCp = Run.criticalPower) } catch (e: Exception) { null }
                 runOnUiThread {
                     if (allRuns.isEmpty()) return@runOnUiThread
                     loadL.text = "Load: " + ld.status; loadL.setTextColor(ld.color)

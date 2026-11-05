@@ -36,7 +36,7 @@ object CriticalPower {
         return out
     }
 
-    fun estimate(runs: List<JSONObject>, now: Long = System.currentTimeMillis(), days: Int = 90): Estimate {
+    fun estimate(runs: List<JSONObject>, now: Long = System.currentTimeMillis(), days: Int = 90, currentCp: Int = 0): Estimate {
         val recent = runs.filter { now - it.optLong("start") in 0 until days * 86_400_000L }
         val best = HashMap<Int, Best>()
         recent.forEach { r ->
@@ -53,10 +53,14 @@ object CriticalPower {
         val slope = xs.indices.sumOf { (xs[it] - mx) * (ys[it] - my) } / xs.indices.sumOf { (xs[it] - mx) * (xs[it] - mx) }
         val wPrime = (my - slope * mx) / 1000.0
         val short = pts.first { it.sec <= 300 }; val long = pts.last()
-        val hardEnough = short.watts >= long.watts * 1.08
+        // All-out efforts: 3–5 min power well above 20 min power (a CP test gives ~1.2×).
+        val hardEnough = short.watts >= long.watts * 1.15
         return when {
-            !hardEnough || wPrime < 5 -> Estimate(null, wPrime, pts,
-                "No all-out efforts recently (your best 3–5 min power is close to your 20 min power), so CP can't be measured from easy runs.")
+            !hardEnough || wPrime < 8 -> Estimate(null, wPrime, pts,
+                "No all-out efforts in the last $days days (best ${short.sec / 60}-min ${short.watts} W is close to 20-min ${long.watts} W), so CP can't be measured from these runs.")
+            // A lower CP is only believed when the long effort really was hard (near your current CP).
+            currentCp > 0 && slope < currentCp && long.watts < currentCp * 0.92 -> Estimate(null, wPrime, pts,
+                "Your best 20-min power (${long.watts} W) is well below your CP, so these runs weren't hard enough to show a lower CP.")
             wPrime > 40 || slope < 120 || slope > 700 -> Estimate(null, wPrime, pts, "Your efforts don't fit the model well — try a CP test.")
             else -> Estimate(slope.roundToInt(), wPrime, pts, "From your best ${short.sec / 60}-min (${short.watts} W) and ${long.sec / 60}-min (${long.watts} W) efforts in the last $days days.")
         }

@@ -94,7 +94,7 @@ object SleepData {
 object CpUpdate {
     fun mode(ctx: Context) = ctx.getSharedPreferences("runsettings", 0).getString("cpAuto", "ask") ?: "ask"
 
-    fun estimate(ctx: Context) = CriticalPower.estimate(PhoneRuns.list(ctx).take(200).mapNotNull { PhoneRuns.read(it) })
+    fun estimate(ctx: Context) = CriticalPower.estimate(PhoneRuns.list(ctx).take(200).mapNotNull { PhoneRuns.read(it) }, currentCp = RunSettings.cp(ctx))
 
     fun apply(ctx: Context, cp: Int) {
         RunSettings.save(ctx, RunSettings.hrMax(ctx), RunSettings.hrRest(ctx), cp, RunSettings.cal(ctx), RunSettings.ccUrl(ctx))
@@ -136,6 +136,29 @@ class ReadinessActivity : Activity() {
             if (SleepData.granted(this) && System.currentTimeMillis() - ReadinessSync.nightsAt(this) > 10 * 60_000L) {
                 SleepData.refresh(this); runOnUiThread { if (!isFinishing) render() }
             }
+        }.start()
+    }
+
+    /** Android 14+: health data is a normal permission prompt (shown by Health Connect). Older: the Health Connect app. */
+    private fun askHealth() {
+        if (android.os.Build.VERSION.SDK_INT >= 34) { requestPermissions(SleepData.REQUEST.toTypedArray(), 50); return }
+        try { @Suppress("DEPRECATION") startActivityForResult(SleepData.requestIntent(this), 50) } catch (e: Exception) {
+            try { startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)) } catch (e2: Exception) { }
+            Toast.makeText(this, "In Health Connect, open Sports Scores and allow Sleep and Heart rate", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 50) return
+        if (!SleepData.granted(this)) {
+            Toast.makeText(this, "Not allowed yet. Health Connect → See more health apps → Sports Scores → allow Sleep and Heart rate.", Toast.LENGTH_LONG).show()
+            try { startActivity(Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)) } catch (e: Exception) { }
+            return
+        }
+        Thread {
+            val n = SleepData.refresh(this)
+            runOnUiThread { Toast.makeText(this, if (n == null) "Couldn't read sleep yet" else "$n nights of sleep found", Toast.LENGTH_SHORT).show(); render() }
         }.start()
     }
 
@@ -214,8 +237,7 @@ class ReadinessActivity : Activity() {
                         "Garmin: in Garmin Connect, turn on Health Connect under connected apps and allow Sleep and Heart rate. " +
                         "Samsung: Samsung Health → Settings → Health Connect.", RunUi.MUTED, 13f))
                     addView(RunUi.button(ctx, "Connect sleep", RunUi.ACCENT) {
-                        try { @Suppress("DEPRECATION") startActivityForResult(SleepData.requestIntent(ctx), 50) }
-                        catch (e: Exception) { Toast.makeText(ctx, "Couldn't open Health Connect: ${e.message}", Toast.LENGTH_LONG).show() }
+                        askHealth()
                     }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
                     if (SleepData.granted(ctx)) addView(RunUi.text(ctx, "Connected — no nights found yet. Check that Garmin Connect (or Samsung Health) is sharing Sleep with Health Connect.", RunUi.POWER, 12f).apply { setPadding(0, dp(6), 0, 0) })
                 }

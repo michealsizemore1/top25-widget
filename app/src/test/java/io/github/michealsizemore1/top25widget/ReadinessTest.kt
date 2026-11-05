@@ -71,6 +71,13 @@ class ReadinessTest {
         assertNotNull(e.cp); assertTrue("cp ${e.cp}", e.cp!! in 330..350)
     }
 
+    @Test fun moderateSurgesDontLowerCp() {
+        // Like real easy/steady runs: best 3 min 310 W, 20 min 287 W (CP setting 333).
+        val now = 100L * 86_400_000L
+        val runs = listOf(powerRun(now - 86_400_000L, listOf(600 to 250, 180 to 310, 1200 to 287, 600 to 250)))
+        assertNull(CriticalPower.estimate(runs, now, currentCp = 333).cp)
+    }
+
     @Test fun easyRunsGiveNoCp() {
         val now = 100L * 86_400_000L
         val runs = (1..5).map { powerRun(now - it * 86_400_000L, listOf(3000 to 255)) }

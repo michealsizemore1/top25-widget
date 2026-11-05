@@ -217,7 +217,7 @@ class RunsActivity : Activity() {
                         ld.ratio?.let { Triple(String.format(java.util.Locale.US, "%.1f", ld.milesAvg), "usual weekly miles", Color.WHITE) },
                     )))
                     addView(RunUi.text(ctx, ld.advice, RunUi.MUTED, 12f).apply { setPadding(0, dp(6), 0, 0) })
-                    val cpE = io.github.michealsizemore1.top25widget.CriticalPower.estimate(all)
+                    val cpE = io.github.michealsizemore1.top25widget.CriticalPower.estimate(all, currentCp = RunSettings.cp(this))
                     val cpNow = RunSettings.cp(ctx)
                     addView(RunUi.text(ctx, "Critical power $cpNow W" + (cpE.cp?.let { if (kotlin.math.abs(it - cpNow) >= 3) " · your runs say $it W — tap to review" else " · matches your runs" } ?: " ▸"),
                         0xFFB18CFF.toInt(), 13f, true).apply { setPadding(0, dp(8), 0, 0); setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) } })
