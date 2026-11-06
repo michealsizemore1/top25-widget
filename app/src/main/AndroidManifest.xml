@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Sleep and heart rate that Samsung Health saves to Health Connect (for the readiness score). -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <activity
+            android:name=".run.RunsActivity"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:roundIcon="@drawable/ic_launcher"
+            android:label="BeyondStride"
+            android:launchMode="singleTask"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- The Command Center's "Send plan to BeyondStride" link opens here. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="beyondstride" android:host="localhost" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".run.RunDetailActivity"
+            android:exported="false"
+            android:label="Run"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.RunSettingsActivity"
+            android:exported="false"
+            android:label="Run settings"
+            android:windowSoftInputMode="adjustResize"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.FitnessActivity"
+            android:exported="false"
+            android:label="Fitness"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.AllRunsActivity"
+            android:exported="false"
+            android:label="All runs"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.ReadinessActivity"
+            android:exported="true"
+            android:label="Readiness"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running">
+            <!-- Health Connect shows this as the app's privacy policy. -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".run.ReadinessActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+        <activity
+            android:name=".run.LiveTrackActivity"
+            android:exported="false"
+            android:label="LiveTrack"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.TrailsActivity"
+            android:exported="false"
+            android:label="Trails"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.ScreensActivity"
+            android:exported="false"
+            android:label="Watch screens"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.WorkoutsActivity"
+            android:exported="false"
+            android:label="Workouts"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <activity
+            android:name=".run.WorkoutEditActivity"
+            android:exported="false"
+            android:label="Workout"
+            android:windowSoftInputMode="adjustResize"
+            android:taskAffinity="io.github.michealsizemore1.beyondstride.running" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+        <service
+            android:name=".run.RunReceiverService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/run/" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/deleted/" />
+                <data android:scheme="wear" android:host="*" android:path="/runsettings" />
+                <data android:scheme="wear" android:host="*" android:path="/trail" />
+                <data android:scheme="wear" android:host="*" android:path="/checks" />
+                <data android:scheme="wear" android:host="*" android:path="/nights" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/course/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/cmd/" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
