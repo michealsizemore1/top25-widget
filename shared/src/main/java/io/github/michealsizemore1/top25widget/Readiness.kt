@@ -202,11 +202,16 @@ object Readiness {
         return z.length() >= 5 && z.optInt(3) + z.optInt(4) >= 15 * 60
     }
 
-    /** Average morning-check heart rate over the last 14 days (rounded to 0.5), with the number of checks; null until 5 checks. */
-    fun morningRest(checks: List<Check>, today: String = today()): Pair<Double, Int>? {
-        val l = checks.filter { it.hr > 0 && daysBetween(it.day, today) in 0..13 }
+    /**
+     * Resting heart rate for the zones: the average SLEEPING heart rate (lowest overnight readings) over the
+     * last 14 nights, rounded to 0.5 — the same idea as Garmin's resting HR. (The morning-check heart rate is
+     * taken awake, just after waking, and runs several beats higher, so it isn't used for zones.)
+     * Null until 5 nights.
+     */
+    fun restForZones(nights: List<Night>, today: String = today()): Pair<Double, Int>? {
+        val l = nights.filter { it.sleepHr > 0 && daysBetween(it.day, today) in 0..13 }
         if (l.size < 5) return null
-        return Math.round(l.map { it.hr }.average() * 2) / 2.0 to l.size
+        return Math.round(l.map { it.sleepHr }.average() * 2) / 2.0 to l.size
     }
 
     fun daysBetween(a: String, b: String): Long = try {

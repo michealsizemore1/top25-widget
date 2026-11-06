@@ -72,15 +72,16 @@ object SleepData {
                 val g = groups.lastOrNull()
                 if (g != null && ChronoUnit.MINUTES.between(g.maxOf { it.endTime }, s.startTime) <= 120) g += s else groups += mutableListOf(s)
             }
+            // Counted in seconds and rounded once at the end (rounding each stage lost ~10 min a night).
             fun minutesOf(g: List<SleepSessionRecord>): Long {
                 val spans = g.flatMap { asleepSpans(it) }.sortedBy { it.first }
                 if (spans.isEmpty()) return 0L
                 var total = 0L; var curS = spans[0].first; var curE = spans[0].second
                 for ((a, b) in spans.drop(1)) {
-                    if (a > curE) { total += ChronoUnit.MINUTES.between(curS, curE); curS = a; curE = b }
+                    if (a > curE) { total += ChronoUnit.SECONDS.between(curS, curE); curS = a; curE = b }
                     else if (b > curE) curE = b
                 }
-                return total + ChronoUnit.MINUTES.between(curS, curE)
+                return Math.round((total + ChronoUnit.SECONDS.between(curS, curE)) / 60.0)
             }
             val byDay = groups.groupBy { g -> g.maxOf { it.endTime }.atZone(zone).toLocalDate().toString() }
             val nights = byDay.map { (day, gs) ->
@@ -272,19 +273,19 @@ class ReadinessActivity : Activity() {
         })
 
         // Critical power.
-        // Resting heart rate for the zones, from the morning checks (H10, lying still after waking).
+        // Resting heart rate for the zones, from sleeping heart rate (Samsung Health), last 14 nights.
         col.addView(RunUi.section(this, "RESTING HEART RATE (ZONES)"))
         col.addView(RunUi.card(this).apply {
             val cur = RunSettings.hrRest(ctx)
-            val mr = Readiness.morningRest(ReadinessSync.checks(ctx))
+            val mr = Readiness.restForZones(ReadinessSync.nights(ctx))
             fun f(v: Double) = if (v % 1.0 == 0.0) "${v.toInt()}" else String.format(java.util.Locale.US, "%.1f", v)
-            addView(RunUi.text(ctx, "Zones use ${f(cur)} bpm" + (mr?.let { "  ·  14-day morning avg ${f(it.first)}" } ?: ""), Color.WHITE, 18f, true))
+            addView(RunUi.text(ctx, "Zones use ${f(cur)} bpm" + (mr?.let { "  ·  14-night sleeping avg ${f(it.first)}" } ?: ""), Color.WHITE, 18f, true))
             if (mr == null) {
-                val n = ReadinessSync.checks(ctx).count { it.hr > 0 && Readiness.daysBetween(it.day, Readiness.today()) in 0..13 }
-                addView(RunUi.text(ctx, "Needs 5 morning checks in the last 14 days ($n so far).", RunUi.MUTED, 12f))
+                val n = ReadinessSync.nights(ctx).count { it.sleepHr > 0 && Readiness.daysBetween(it.day, Readiness.today()) in 0..13 }
+                addView(RunUi.text(ctx, "Needs 5 nights of sleep in the last 14 days ($n so far).", RunUi.MUTED, 12f))
             } else {
                 val d = mr.first - cur
-                addView(RunUi.text(ctx, "From ${mr.second} morning checks. " + when {
+                addView(RunUi.text(ctx, "Sleeping heart rate, ${mr.second} nights. " + when {
                     kotlin.math.abs(d) < 1 -> "Matches your setting — nothing to change."
                     kotlin.math.abs(d) < 3 -> "Within ${f(kotlin.math.abs(d))} bpm — normal day-to-day variation, changing is optional."
                     else -> "${f(kotlin.math.abs(d))} bpm ${if (d > 0) "higher" else "lower"} than your setting — worth updating your zones."
