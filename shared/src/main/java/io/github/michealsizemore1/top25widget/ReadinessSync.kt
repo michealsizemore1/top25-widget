@@ -43,6 +43,12 @@ object ReadinessSync {
         push(ctx, NIGHTS, Readiness.nightsJson(merged))
     }
 
+    /** Send both lists (after a restore). */
+    fun pushAll(ctx: Context) {
+        push(ctx, CHECKS, Readiness.checksJson(checks(ctx)))
+        push(ctx, NIGHTS, Readiness.nightsJson(nights(ctx)))
+    }
+
     fun nightsAt(ctx: Context) = p(ctx).getLong("nightsAt", 0L)
 
     /** Data from the other device. */

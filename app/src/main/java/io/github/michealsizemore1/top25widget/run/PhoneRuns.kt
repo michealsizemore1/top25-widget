@@ -157,6 +157,7 @@ class RunReceiverService : WearableListenerService() {
                 if (isNew) {
                     try { RunWeather.fill(this, json.optLong("start")) } catch (e: Exception) { }
                     try { CpUpdate.afterRun(this) } catch (e: Exception) { }
+                    try { Backup.autoUpdate(this) } catch (e: Exception) { }
                     notifyRun(json)
                     // (Automatic Stryd lookups are off: Stryd only has runs after an offline sync, which isn't used.)
                 }

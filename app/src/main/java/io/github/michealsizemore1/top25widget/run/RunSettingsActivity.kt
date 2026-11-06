@@ -181,6 +181,31 @@ class RunSettingsActivity : Activity() {
         getSharedPreferences("strydcloud", 0).edit().clear().apply()   // forget any old Stryd login
 
         // ---- Versions
+        // ---- backup
+        col.addView(RunUi.section(this, "BACKUP"))
+        col.addView(RunUi.card(this).apply {
+            val at = Backup.lastAt(ctx)
+            addView(RunUi.text(ctx, if (at == 0L) "No backup yet" else "Last backup: " +
+                java.text.SimpleDateFormat("EEE, MMM d · h:mm a", java.util.Locale.getDefault()).format(java.util.Date(at)), Color.WHITE, 15f, true))
+            Backup.lastInfo(ctx).takeIf { it.isNotBlank() }?.let { addView(RunUi.text(ctx, it, RunUi.MUTED, 12f)) }
+            addView(RunUi.text(ctx, "Runs, workouts & plan, courses, settings, zones, LiveTrack, morning checks, sleep and personal bests — in one file. " +
+                "Save it to Google Drive so it's safe if the phone is lost.", RunUi.DIM, 12f).apply { setPadding(0, dp(6), 0, 0) })
+            addView(RunUi.button(ctx, if (Backup.uri(ctx) == null) "Back up now…" else "Back up now", RunUi.ACCENT) {
+                val u = Backup.uri(ctx)
+                if (u == null) newBackup() else Thread {
+                    val r = try { "Backed up: " + Backup.write(ctx, u) } catch (e: Exception) { null }
+                    runOnUiThread { if (r == null) newBackup() else { Toast.makeText(ctx, r, Toast.LENGTH_LONG).show(); render() } }
+                }.start()
+            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
+            if (Backup.uri(ctx) != null) addView(RunUi.button(ctx, "Back up to a new file…", RunUi.CARD, Color.WHITE) { newBackup() }
+                .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
+            addView(RunUi.button(ctx, "Restore from a backup…", RunUi.CARD, Color.WHITE) {
+                @Suppress("DEPRECATION") startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed")), 82)
+            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
+        })
+        switch("Update the backup after every run", "Keeps the saved backup file current automatically", Backup.auto(this)) { Backup.setAuto(ctx, it) }
+
         col.addView(RunUi.section(this, "APP VERSIONS"))
         col.addView(RunUi.text(this, "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName, RunUi.MUTED, 13f)
             .apply { setPadding(dp(4), dp(6), 0, 0) })
@@ -201,5 +226,45 @@ class RunSettingsActivity : Activity() {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
+    }
+
+    private fun newBackup() {
+        @Suppress("DEPRECATION") startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/zip").putExtra(Intent.EXTRA_TITLE, Backup.fileName()), 81)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data ?: return
+        if (resultCode != RESULT_OK) return
+        when (requestCode) {
+            81 -> {
+                Backup.remember(this, uri)
+                Thread {
+                    val r = try { "Backed up: " + Backup.write(this, uri) } catch (e: Exception) { "Backup failed: ${e.message}" }
+                    runOnUiThread { Toast.makeText(this, r, Toast.LENGTH_LONG).show(); render() }
+                }.start()
+            }
+            82 -> Thread {
+                val meta = Backup.peek(this, uri)
+                runOnUiThread {
+                    if (meta == null) { Toast.makeText(this, "That isn't a BeyondStride backup", Toast.LENGTH_LONG).show(); return@runOnUiThread }
+                    val made = java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.getDefault()).format(java.util.Date(meta.optLong("created")))
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Restore this backup?")
+                        .setMessage("Made $made · ${meta.optInt("runs")} runs · ${meta.optInt("courses")} courses.\n\n" +
+                            "Runs and courses in the backup are added back. Settings, zones, workouts and plan are replaced with the backup's. " +
+                            "The watch gets them too.")
+                        .setPositiveButton("Restore") { _, _ ->
+                            Thread {
+                                val r = try { Backup.restore(this, uri) } catch (e: Exception) { "Restore failed: ${e.message}" }
+                                runOnUiThread { Toast.makeText(this, r, Toast.LENGTH_LONG).show(); render() }
+                            }.start()
+                        }
+                        .setNegativeButton("Cancel", null).show()
+                }
+            }.start()
+        }
     }
 }
