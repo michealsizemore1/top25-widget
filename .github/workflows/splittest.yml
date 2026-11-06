@@ -1,7 +1,8 @@
 name: BeyondStride split test
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [split-test]
 
 permissions:
   contents: write
