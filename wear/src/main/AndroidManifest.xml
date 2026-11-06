@@ -4,25 +4,10 @@
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SEND_SMS" />
-    <uses-feature android:name="android.hardware.telephony" android:required="false" />
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
-    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
         android:icon="@drawable/ic_launcher"
@@ -42,73 +27,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".run.RunActivity"
-            android:exported="true"
-            android:icon="@drawable/ic_launcher_run"
-            android:roundIcon="@drawable/ic_launcher_run"
-            android:label="BeyondStride"
-            android:theme="@style/RunTheme"
-            android:enableOnBackInvokedCallback="true"
-            android:launchMode="singleTask"
-            android:taskAffinity="io.github.michealsizemore1.top25widget.run">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".run.MorningCheckActivity"
-            android:exported="false"
-            android:label="Morning check"
-            android:theme="@style/RunTheme"
-            android:taskAffinity="io.github.michealsizemore1.top25widget.run" />
-
-        <activity
-            android:name=".run.RunHistoryActivity"
-            android:exported="false"
-            android:label="Run history"
-            android:taskAffinity="io.github.michealsizemore1.top25widget.run" />
-
-        <service
-            android:name=".run.RunSettingsListener"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
-                <data android:scheme="wear" android:host="*" android:path="/settings" />
-                <data android:scheme="wear" android:host="*" android:path="/workouts" />
-                <data android:scheme="wear" android:host="*" android:path="/phonestatus" />
-                <data android:scheme="wear" android:host="*" android:path="/runsettings" />
-                <data android:scheme="wear" android:host="*" android:path="/trail" />
-                <data android:scheme="wear" android:host="*" android:path="/nights" />
-                <data android:scheme="wear" android:host="*" android:path="/checks" />
-                <data android:scheme="wear" android:host="*" android:pathPrefix="/course/" />
-                <data android:scheme="wear" android:host="*" android:pathPrefix="/deleted/" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-                <data android:scheme="wear" android:host="*" android:path="/live/ack" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name=".run.RunService"
-            android:exported="false"
-            android:foregroundServiceType="location|health|connectedDevice" />
-
-        <service
-            android:name=".run.RunTileService"
-            android:exported="true"
-            android:icon="@drawable/ic_launcher_run"
-            android:label="BeyondStride"
-            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
-            <intent-filter>
-                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
-            </intent-filter>
-            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher_run" />
-        </service>
 
         <service
             android:name=".Top25TileService"
