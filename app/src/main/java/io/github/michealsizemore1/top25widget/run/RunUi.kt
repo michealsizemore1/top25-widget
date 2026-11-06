@@ -275,7 +275,7 @@ object RunUi {
               document.getElementById('vt').textContent=clock(t);document.getElementById('vd').textContent=(f[3]/1609.344).toFixed(2);
               document.getElementById('vp').textContent=f[5]?clock(f[5]):'–';document.getElementById('vh').textContent=f[4]||'–';
               document.getElementById('vw').textContent=f[6]||'–';document.getElementById('pos').value=Math.round(t/T*1000);
-              if(follow&&!m.getBounds().pad(-0.15).contains(dot.getLatLng()))m.panTo(dot.getLatLng(),{animate:true});}
+              if(follow&&!m.getBounds().pad(-0.03).contains(dot.getLatLng()))m.panTo(dot.getLatLng(),{animate:true});}
             function step(now){if(!playing)return;if(last)t+=Math.min(1,(now-last)/1000)*speeds[si];last=now;
               if(t>=T){t=T;playing=false;document.getElementById('play').textContent='↺ Replay';}show(true);if(playing)requestAnimationFrame(step);}
             document.getElementById('play').onclick=function(){if(t>=T){t=0;idx=0;}playing=!playing;last=0;
