@@ -424,46 +424,6 @@ class RunActivity : Activity() {
             }, lp(true))
         })
 
-        // 4. FITNESS: Zone 2, decoupling, CP, personal bests in one card.
-        col.addView(card().apply {
-            visibility = View.GONE
-            addView(head("FITNESS"))
-            val z2L = label("", Color.WHITE, 12f, true); val decL = label("", Color.WHITE, 12f, true)
-            val cpL = label("", Color.WHITE, 12f, true); val pbL = label("", 0xFFF2C94C.toInt(), 10f)
-            listOf(z2L, decL, cpL, pbL).forEach { it.visibility = View.GONE; addView(it) }
-            val box = this
-            Thread {
-                val now = System.currentTimeMillis()
-                val allRuns = RunStore.list(this@RunActivity).mapNotNull { RunStore.read(it) }
-                if (allRuns.isEmpty()) return@Thread
-                val runs = allRuns.filter { now - it.optLong("start") < 56 * 86_400_000L }
-                // Personal bests from every run (saved, so a new best is announced right away).
-                val recMap = I.records(allRuns)
-                val rec = org.json.JSONObject().also { o -> recMap.forEach { (k, v) -> o.put(k, org.json.JSONObject().put("sec", v.sec).put("start", v.start)) } }
-                prefs.edit().putString("pbRecords", rec.toString()).apply()
-                val (z2now, z2before) = I.z2Trend(runs, Run.hrMax, Run.hrRest, now)
-                val D = io.github.michealsizemore1.top25widget.Decoupling
-                val dec = allRuns.filter { now - it.optLong("start") < 28 * 86_400_000L }
-                    .mapNotNull { r -> D.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.main }
-                val cpE = try { io.github.michealsizemore1.top25widget.CriticalPower.estimate(allRuns, now, currentCp = Run.criticalPower) } catch (e: Exception) { null }
-                runOnUiThread {
-                    z2now?.let { n ->
-                        z2L.text = "Zone 2 " + RM.paceFor(n, RM.METERS_PER_MILE) + "/mi" +
-                            (z2before?.let { b -> val d = b - n; if (d >= 0) " · ${d}s faster" else " · ${-d}s slower" } ?: "")
-                        z2L.visibility = View.VISIBLE
-                    }
-                    if (dec.isNotEmpty()) { val a = dec.average()
-                        decL.text = "Decoupling " + D.text(a) + " · " + D.rating(a); decL.setTextColor(D.color(a)); decL.visibility = View.VISIBLE }
-                    cpL.text = "CP ${Run.criticalPower} W" + (cpE?.cp?.let { e -> if (kotlin.math.abs(e - Run.criticalPower) >= 3) " · runs say $e" else " · ✓" } ?: "")
-                    cpL.visibility = View.VISIBLE
-                    pbL.text = I.PB_DISTANCES.mapNotNull { (k, _) -> rec.optJSONObject(k)?.let { I.pbName(k).replace("Half marathon", "Half") + " " + I.clock(it.optInt("sec")) } }
-                        .joinToString(" · ").let { if (it.isBlank()) "" else "PBs  $it" }
-                    pbL.visibility = if (pbL.text.isNullOrBlank()) View.GONE else View.VISIBLE
-                    box.visibility = View.VISIBLE
-                }
-            }.start()
-        })
-
         // 5. Sensors, compact.
         col.addView(card().apply {
             fun row(name: String, key: String) = LinearLayout(this@RunActivity).apply {
@@ -486,25 +446,11 @@ class RunActivity : Activity() {
             setOnClickListener { onClick() }
         }
         Run.nav?.trail?.let { t -> col.addView(navButton("Directions to trail start", C.CARD, Color.WHITE) { showDirections(t) }) }
-        // Icon row (like the phone's bottom tabs): Workouts · Trails · History · Settings.
+        // Menu row — same as the phone's bottom tabs: Today · Fitness · Plan · Runs (Settings under it).
         col.addView(View(this).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(10) })
-        col.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
-            listOf<Triple<String, String, () -> Unit>>(
-                Triple("☰", "Plan", { showWorkoutPicker() }),
-                Triple("⛰", "Trails", { showTrails() }),
-                Triple("▤", "History", { startActivity(Intent(this@RunActivity, RunHistoryActivity::class.java)) }),
-                Triple("⚙", "Settings", { showSettings = true; startBuilt = false; renderStart() }),
-            ).forEach { (glyph, name, go) ->
-                addView(column().apply {
-                    gravity = Gravity.CENTER
-                    addView(label(glyph, Color.WHITE, 18f, true).apply { background = rounded(C.CARD, 18); setPadding(0, dp(6), 0, dp(6)) },
-                        LinearLayout.LayoutParams(dp(40), WRAP_CONTENT))
-                    addView(label(name, C.MUTED, 8f))
-                    setOnClickListener { go() }
-                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-            }
+        col.addView(menuRow(0))
+        col.addView(label("⚙ Settings", C.MUTED, 12f, true).apply {
+            setPadding(0, dp(10), 0, dp(6)); setOnClickListener { showSettings = true; startBuilt = false; renderStart() }
         })
 
         root.removeAllViews()
@@ -1077,12 +1023,119 @@ class RunActivity : Activity() {
     }
 
     /** Pick today's planned workout, one from the library, or a free run. */
+    /** Same four tabs as the phone. [selected]: 0 Today, 1 Fitness, 2 Plan, 3 Runs. */
+    private fun menuRow(selected: Int) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+        listOf<Triple<String, String, () -> Unit>>(
+            Triple("☀", "Today", { overlayOpen = false; startBuilt = false; renderStart() }),
+            Triple("♥", "Fitness", { showFitness() }),
+            Triple("▦", "Plan", { showWorkoutPicker() }),
+            Triple("≡", "Runs", { startActivity(Intent(this@RunActivity, RunHistoryActivity::class.java)) }),
+        ).forEachIndexed { idx, (glyph, name, go) ->
+            val on = idx == selected
+            addView(column().apply {
+                gravity = Gravity.CENTER
+                addView(label(glyph, if (on) Color.BLACK else Color.WHITE, 17f, true).apply {
+                    background = rounded(if (on) C.ACCENT else C.CARD, 18); setPadding(0, dp(5), 0, dp(5)) },
+                    LinearLayout.LayoutParams(dp(38), WRAP_CONTENT))
+                addView(label(name, if (on) Color.WHITE else C.MUTED, 8f, on))
+                if (!on) setOnClickListener { go() }
+            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        }
+    }
+
+    /** Fitness page (like the phone's Fitness tab): readiness, then Zone 2, decoupling, CP, load and personal bests. */
+    private fun showFitness() {
+        overlayOpen = true; startBuilt = false
+        val w = resources.displayMetrics.widthPixels
+        val col = column().apply { setPadding(w / 9, w / 8, w / 9, w / 5) }
+        val I = io.github.michealsizemore1.top25widget.Insights
+        val RM = io.github.michealsizemore1.top25widget.RunMath
+        fun card() = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = rounded(C.CARD, 16)
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+        }
+        fun head(t: String) = label(t, C.ACCENT, 11f, true).apply { letterSpacing = 0.08f }
+        col.addView(label("Fitness", Color.WHITE, 20f, true))
+        col.addView(card().apply {
+            addView(head("READINESS"))
+            val big = label("", Color.WHITE, 16f, true); val sub = label("", C.MUTED, 10f)
+            addView(big); addView(sub)
+            setOnClickListener { startActivity(Intent(this@RunActivity, MorningCheckActivity::class.java).putExtra("start", !Recovery.checkedToday(this@RunActivity))) }
+            Thread {
+                val r = try { Recovery.result(this@RunActivity) } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (r == null) { big.text = "Morning check ▸"; big.setTextColor(C.ACCENT); sub.text = "2½ min with your strap" }
+                    else { big.text = "${r.score} · ${r.label}"; big.setTextColor(r.color); sub.text = r.parts.filter { it.pts >= 0 }.joinToString(" · ") { "${it.name} ${it.value}" } }
+                }
+            }.start()
+        })
+        // Zone 2, decoupling, CP, personal bests.
+        col.addView(card().apply {
+            visibility = View.GONE
+            addView(head("TRENDS"))
+            val z2L = label("", Color.WHITE, 12f, true); val decL = label("", Color.WHITE, 12f, true)
+            val cpL = label("", Color.WHITE, 12f, true); val pbL = label("", 0xFFF2C94C.toInt(), 10f)
+            listOf(z2L, decL, cpL, pbL).forEach { it.visibility = View.GONE; addView(it) }
+            val box = this
+            Thread {
+                val now = System.currentTimeMillis()
+                val allRuns = RunStore.list(this@RunActivity).mapNotNull { RunStore.read(it) }
+                if (allRuns.isEmpty()) return@Thread
+                val runs = allRuns.filter { now - it.optLong("start") < 56 * 86_400_000L }
+                // Personal bests from every run (saved, so a new best is announced right away).
+                val recMap = I.records(allRuns)
+                val rec = org.json.JSONObject().also { o -> recMap.forEach { (k, v) -> o.put(k, org.json.JSONObject().put("sec", v.sec).put("start", v.start)) } }
+                prefs.edit().putString("pbRecords", rec.toString()).apply()
+                val (z2now, z2before) = I.z2Trend(runs, Run.hrMax, Run.hrRest, now)
+                val D = io.github.michealsizemore1.top25widget.Decoupling
+                val dec = allRuns.filter { now - it.optLong("start") < 28 * 86_400_000L }
+                    .mapNotNull { r -> D.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.main }
+                val cpE = try { io.github.michealsizemore1.top25widget.CriticalPower.estimate(allRuns, now, currentCp = Run.criticalPower) } catch (e: Exception) { null }
+                runOnUiThread {
+                    z2now?.let { n ->
+                        z2L.text = "Zone 2 " + RM.paceFor(n, RM.METERS_PER_MILE) + "/mi" +
+                            (z2before?.let { b -> val d = b - n; if (d >= 0) " · ${d}s faster" else " · ${-d}s slower" } ?: "")
+                        z2L.visibility = View.VISIBLE
+                    }
+                    if (dec.isNotEmpty()) { val a = dec.average()
+                        decL.text = "Decoupling " + D.text(a) + " · " + D.rating(a); decL.setTextColor(D.color(a)); decL.visibility = View.VISIBLE }
+                    cpL.text = "CP ${Run.criticalPower} W" + (cpE?.cp?.let { e -> if (kotlin.math.abs(e - Run.criticalPower) >= 3) " · runs say $e" else " · ✓" } ?: "")
+                    cpL.visibility = View.VISIBLE
+                    pbL.text = I.PB_DISTANCES.mapNotNull { (k, _) -> rec.optJSONObject(k)?.let { I.pbName(k).replace("Half marathon", "Half") + " " + I.clock(it.optInt("sec")) } }
+                        .joinToString(" · ").let { if (it.isBlank()) "" else "PBs  $it" }
+                    pbL.visibility = if (pbL.text.isNullOrBlank()) View.GONE else View.VISIBLE
+                    box.visibility = View.VISIBLE
+                }
+            }.start()
+        })
+
+        col.addView(View(this).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(10) })
+        col.addView(menuRow(1))
+        root.removeAllViews()
+        root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
+    }
+
     private fun showWorkoutPicker() {
         overlayOpen = true
         startBuilt = false
         val w = resources.displayMetrics.widthPixels
         val col = column().apply { setPadding(w / 8, w / 7, w / 8, w / 4) }
-        col.addView(label("Workouts", Color.WHITE, 18f, true))
+        col.addView(label("Plan", Color.WHITE, 18f, true))
+        // Trails & courses (same as the phone's Plan tab).
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = rounded(C.CARD, 14)
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
+            addView(label("⛰ Trails & courses", Color.WHITE, 14f, true))
+            addView(label(Run.nav?.trail?.name?.let { "Chosen: $it" } ?: "Find trails near you", if (Run.nav != null) 0xFF46C46E.toInt() else C.MUTED, 10f))
+            setOnClickListener { showTrails() }
+        })
+        col.addView(label("WORKOUTS", C.ACCENT, 11f, true).apply { setPadding(0, dp(8), 0, 0) })
         fun item(title: String, sub: String, workout: org.json.JSONObject?) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(7), dp(12), dp(7))
@@ -1115,6 +1168,8 @@ class RunActivity : Activity() {
         WatchWorkouts.library(this).forEach { col.addView(item(it.optString("name"), outline(it), it)) }
         if (WatchWorkouts.library(this).isEmpty())
             col.addView(label("Build workouts in BeyondStride on the phone — they show up here.", C.DIM, 11f).apply { setPadding(0, dp(10), 0, 0) })
+        col.addView(View(this).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(10) })
+        col.addView(menuRow(2))
         root.removeAllViews()
         root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
     }
