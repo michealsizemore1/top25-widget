@@ -43,6 +43,7 @@ open class RunsActivity : Activity() {
     }
 
     override fun onResume() {
+        io.github.michealsizemore1.top25widget.Theme.load(this, "runsettings")
         super.onResume()
         if (wrongDevice) return
         WorkoutStore.pushToWatch(this)   // keeps the watch's "today" plan current

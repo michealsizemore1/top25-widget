@@ -20,7 +20,7 @@ import io.github.michealsizemore1.top25widget.RunMath
 
 /** Look and building blocks for the phone's Running screens. */
 object RunUi {
-    const val BG = 0xFF121A17.toInt()
+    val BG: Int get() = io.github.michealsizemore1.top25widget.Theme.bg
     const val CARD = 0xFF1C2421.toInt()
     const val ACCENT = 0xFFD4E635.toInt()
     const val MUTED = 0xFF9AA3A0.toInt()

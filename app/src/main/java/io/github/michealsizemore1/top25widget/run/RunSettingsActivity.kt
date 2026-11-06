@@ -25,6 +25,7 @@ class RunSettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        io.github.michealsizemore1.top25widget.Theme.load(this, "runsettings")
         io.github.michealsizemore1.top25widget.SettingsSync.watch(this, "runsettings", "phone")
         render()
     }
@@ -50,6 +51,8 @@ class RunSettingsActivity : Activity() {
         if (classic && page == null) {
             col.addView(RunUi.button(this, "Menu style: Classic  (tap for cards)", RunUi.CARD, Color.WHITE) { setMenuStyle("cards") }
                 .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) } })
+            col.addView(RunUi.button(this, "Background: " + (if (io.github.michealsizemore1.top25widget.Theme.light) "Lighter" else "Dark") + "  (tap to switch)", RunUi.CARD, Color.WHITE) { toggleBg() }
+                .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
             col.addView(RunUi.button(this, "Watch data screens ›", RunUi.ACCENT) { startActivity(Intent(ctx, ScreensActivity::class.java)) }
                 .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
             col.addView(RunUi.button(this, "LiveTrack ›", 0xFF4FA3E0.toInt(), Color.WHITE) { startActivity(Intent(ctx, LiveTrackActivity::class.java)) }
@@ -250,6 +253,12 @@ class RunSettingsActivity : Activity() {
         show(col)
     }
 
+    private fun toggleBg() {
+        val T = io.github.michealsizemore1.top25widget.Theme
+        getSharedPreferences("runsettings", 0).edit().putString("bgStyle", if (T.light) "dark" else "light").putLong("settingsAt", System.currentTimeMillis()).apply()
+        T.load(this, "runsettings"); RunSettings.pushToWatch(this); render()
+    }
+
     private fun setMenuStyle(v: String) {
         getSharedPreferences("runsettings", 0).edit().putString("menuStyle", v).putLong("settingsAt", System.currentTimeMillis()).apply()
         RunSettings.pushToWatch(this); page = null; render()
@@ -295,6 +304,7 @@ class RunSettingsActivity : Activity() {
             (if (Backup.auto(ctx) && Backup.uri(ctx) != null) " · auto" else "") } ?: "Not set up") { page = "backup"; render() }
         row("ⓘ", "About", "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName) { page = "about"; render() }
         row("☰", "Menu style", "Cards · tap to switch back to classic (phone and watch)") { setMenuStyle("classic") }
+        row("◐", "Background", if (io.github.michealsizemore1.top25widget.Theme.light) "Lighter · tap for dark" else "Dark · tap for lighter") { toggleBg() }
         show(col)
     }
 

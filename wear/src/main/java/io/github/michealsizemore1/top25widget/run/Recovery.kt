@@ -39,7 +39,8 @@ object Recovery {
 class MorningCheckActivity : Activity() {
     companion object {
         const val SETTLE = 30; const val MEASURE = 120
-        const val ACCENT = 0xFFD4E635.toInt(); const val MUTED = 0xFF9AA3A0.toInt(); const val CARD = 0xFF1C2421.toInt(); const val BG = 0xFF121A17.toInt()
+        const val ACCENT = 0xFFD4E635.toInt(); const val MUTED = 0xFF9AA3A0.toInt(); const val CARD = 0xFF1C2421.toInt()
+        val BG: Int get() = io.github.michealsizemore1.top25widget.Theme.bg
     }
 
     private val handler = Handler(Looper.getMainLooper())

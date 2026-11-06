@@ -40,7 +40,7 @@ class RunActivity : Activity() {
         const val PAUSE = 0xFFFFB547.toInt()
         const val STOP = 0xFFE5484D.toInt()
         const val OK = 0xFF46C46E.toInt()
-        const val BG = 0xFF121A17.toInt()      // same background as the phone app
+        val BG: Int get() = io.github.michealsizemore1.top25widget.Theme.bg   // same background as the phone app
     }
 
     /** Start area: phone-style home, or the settings list. */
@@ -136,6 +136,7 @@ class RunActivity : Activity() {
     }
 
     override fun onResume() {
+        io.github.michealsizemore1.top25widget.Theme.load(this, "run")
         super.onResume()
         if (wrongDevice) return
         if (!Run.isActive) { RunSync.loadSettings(this); RunSync.loadTrail(this) }
@@ -280,6 +281,7 @@ class RunActivity : Activity() {
         set("track", if (Run.recordGpsTrack) "On" else "Off")
         set("trailMap", if (prefs.getBoolean("trailMapTiles", true)) "On" else "Off")
         set("textScale", when { prefs.getFloat("textScale", 1.25f) >= 1.45f -> "Extra large"; prefs.getFloat("textScale", 1.25f) >= 1.2f -> "Large"; else -> "Normal" } + " ▸")
+        set("bgStyle", if (io.github.michealsizemore1.top25widget.Theme.light) "Lighter" else "Dark (saves battery)")
         set("menuStyle", if (prefs.getString("menuStyle", "cards") == "classic") "Classic" else "Cards")
         set("cpauto", when (prefs.getString("cpAuto", "ask")) { "auto" -> "Automatically (raises only)"; "off" -> "Off"; else -> "Ask on the phone" })
         set("hrcap", when (Run.hrCapMode) { "off" -> "Off"; "all" -> "Easy days + free runs · under ${Run.hrCap}"; else -> "Easy days · under ${Run.hrCap}" })
@@ -487,7 +489,7 @@ class RunActivity : Activity() {
         val cards = prefs.getString("menuStyle", "cards") != "classic"
         val icons = mapOf("live" to "◉", "textScale" to "Aa", "trailMap" to "▲", "hrcap" to "♡", "screensRow" to "▦", "voiceRow" to "♪",
             "bottomBtn" to "●", "keepOn" to "☼", "source" to "➤", "stryd" to "S", "hrmax" to "∧", "hrrest" to "∨", "cp" to "W",
-            "cpauto" to "↻", "cal" to "±", "gps" to "⌖", "hrmode" to "♡", "hr" to "♥", "autopause" to "Ⅱ", "track" to "⋯", "menuStyle" to "☰")
+            "cpauto" to "↻", "cal" to "±", "gps" to "⌖", "hrmode" to "♡", "hr" to "♥", "autopause" to "Ⅱ", "track" to "⋯", "menuStyle" to "☰", "bgStyle" to "◐")
         fun row(key: String, title: String, onTap: (() -> Unit)?) = LinearLayout(this).apply {
             if (cards) {
                 // Card style: icon · name · value (green) · ›
@@ -589,6 +591,10 @@ class RunActivity : Activity() {
             Run.recordGpsTrack = !Run.recordGpsTrack; prefs.edit().putBoolean("track", Run.recordGpsTrack).apply()
         }.also { trackRow = it })
 
+        col.addView(row("bgStyle", "Background") {
+            prefs.edit().putString("bgStyle", if (io.github.michealsizemore1.top25widget.Theme.light) "dark" else "light").apply()
+            io.github.michealsizemore1.top25widget.Theme.load(this, "run"); startBuilt = false
+        })
         col.addView(row("menuStyle", "Menu style") {
             prefs.edit().putString("menuStyle", if (cards) "classic" else "cards").apply(); startBuilt = false
         })

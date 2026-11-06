@@ -134,7 +134,7 @@ object RunViews {
     }
 
     fun scroll(ctx: Context, content: View) = ScrollView(ctx).apply {
-        setBackgroundColor(0xFF121A17.toInt())   // same background as the phone app
+        setBackgroundColor(io.github.michealsizemore1.top25widget.Theme.bg)   // same background as the phone app
         isVerticalScrollBarEnabled = false
         addView(content)
         requestFocus()   // bezel scrolls
