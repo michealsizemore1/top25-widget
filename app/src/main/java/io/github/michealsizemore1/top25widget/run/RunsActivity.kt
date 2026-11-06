@@ -16,7 +16,7 @@ import java.util.Date
 import java.util.Locale
 
 /** The phone's Running home: runs from the watch, and where they've been sent. */
-class RunsActivity : Activity() {
+open class RunsActivity : Activity() {
 
     /** True when this file was installed on the wrong kind of device (a message is shown instead). */
     private var wrongDevice = false
@@ -107,8 +107,77 @@ class RunsActivity : Activity() {
 
         val files = PhoneRuns.list(this)
         val runs = files.mapNotNull { PhoneRuns.read(it) }
+        val showAll = this is AllRunsActivity
+        if (!showAll) {
+        val I = io.github.michealsizemore1.top25widget.Insights
+        val R = io.github.michealsizemore1.top25widget.Readiness
+        val hrMax = RunSettings.hrMax(this); val hrRest = RunSettings.hrRest(this)
+        fun divider() = android.view.View(ctx).apply { setBackgroundColor(0x22FFFFFF) }
+            .also { it.layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(10); bottomMargin = dp(10) } }
 
-        // This week's and month's mileage.
+        // 1. TODAY: readiness + today's workout (+ trail).
+        val rd = R.compute(io.github.michealsizemore1.top25widget.ReadinessSync.checks(this),
+            io.github.michealsizemore1.top25widget.ReadinessSync.nights(this), runs.take(120), R.today())
+        val todayW = WorkoutStore.plan(this).optJSONObject(WorkoutStore.dayFmt.format(Date()))
+        col.addView(RunUi.section(this, "TODAY"))
+        col.addView(RunUi.card(this).apply {
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                if (rd == null) addView(RunUi.text(ctx, "Readiness: do the 2½-min morning check on the watch ▸", RunUi.ACCENT, 15f, true))
+                else {
+                    addView(RunUi.text(ctx, "${rd.score}  ${rd.label}" + (if (!rd.checkedToday) "  ·  no morning check" else ""), rd.color, 22f, true))
+                    addView(RunUi.text(ctx, rd.parts.filter { it.pts >= 0 }.joinToString(" · ") { "${it.name} ${it.value}" }, RunUi.MUTED, 12f))
+                    addView(RunUi.text(ctx, rd.advice.substringBefore(". ") + ".", Color.WHITE, 13f).apply { setPadding(0, dp(4), 0, 0) })
+                }
+                setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) }
+            })
+            addView(divider())
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(RunUi.text(ctx, todayW?.optString("name") ?: "No workout planned", Color.WHITE, 17f, true))
+                todayW?.let { w ->
+                    addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Workouts.outline(w, hrMax, hrRest, RunSettings.cp(ctx)).take(4).joinToString("\n"), RunUi.MUTED, 12f))
+                }
+                io.github.michealsizemore1.top25widget.TrailSync.current(ctx)?.let { (t, oab) ->
+                    addView(RunUi.text(ctx, "Trail: ${t.name} · " + String.format(Locale.US, "%.1f mi", t.lengthM / 1609.344 * (if (oab) 2 else 1)) +
+                        (if (oab) " out & back" else ""), 0xFF46C46E.toInt(), 13f, true).apply { setPadding(0, dp(6), 0, 0) })
+                }
+                setOnClickListener { startActivity(Intent(ctx, WorkoutsActivity::class.java)) }
+            })
+        })
+
+        // 2. Actions: four equal buttons.
+        val unsentCc = runs.map { it.optLong("start") }.filter { !PhoneRuns.sentToCommandCenter(this, it) }
+        val live = getSharedPreferences("runsettings", 0).getBoolean("liveOn", false)
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, 0)
+            fun tile(title: String, status: String, color: Int, onClick: () -> Unit) = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                background = RunUi.rounded(color, dp(16).toFloat())
+                setPadding(dp(4), dp(10), dp(4), dp(10))
+                addView(RunUi.text(ctx, title, Color.WHITE, 13f, true).apply { gravity = Gravity.CENTER })
+                addView(RunUi.text(ctx, status, 0xCCFFFFFF.toInt(), 11f).apply { gravity = Gravity.CENTER })
+                setOnClickListener { onClick() }
+            }
+            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { if (!last) marginEnd = dp(6) } }
+            addView(tile("Command\nCenter", if (unsentCc.isEmpty()) "✓ sent" else "Send ${unsentCc.size}", RunUi.CC) {
+                if (unsentCc.isEmpty()) Toast.makeText(ctx, "All runs are already in the Command Center", Toast.LENGTH_SHORT).show()
+                else CommandCenter.send(ctx, unsentCc)
+            }, lp(false))
+            addView(tile("Live\nTrack", if (live) "● ON" else "Off", if (live) 0xFF1F6FB2.toInt() else RunUi.CARD) {
+                if (Live.db(ctx).isBlank()) startActivity(Intent(ctx, LiveTrackActivity::class.java))
+                else {
+                    RunSettings.setBool(ctx, "liveOn", !live)
+                    Toast.makeText(ctx, if (!live) "LiveTrack on — on your watch too" else "LiveTrack off", Toast.LENGTH_SHORT).show()
+                    recreate()
+                }
+            }, lp(false))
+            addView(tile("Trails\n", "near me", RunUi.CARD) { startActivity(Intent(ctx, TrailsActivity::class.java)) }, lp(false))
+            addView(tile("Workouts\n", "& plan", RunUi.CARD) { startActivity(Intent(ctx, WorkoutsActivity::class.java)) }, lp(true))
+        })
+
+        // 3. THIS WEEK: miles, runs, training load.
         val cal = java.util.Calendar.getInstance()
         cal.set(java.util.Calendar.HOUR_OF_DAY, 0); cal.set(java.util.Calendar.MINUTE, 0); cal.set(java.util.Calendar.SECOND, 0)
         cal.set(java.util.Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
@@ -117,204 +186,73 @@ class RunsActivity : Activity() {
         cal.set(java.util.Calendar.HOUR_OF_DAY, 0); cal.set(java.util.Calendar.MINUTE, 0)
         val monthStart = cal.timeInMillis
         fun miles(from: Long) = runs.filter { it.optLong("start") >= from }.sumOf { it.optDouble("distance") }
+        val ld = I.load(runs.take(200))
+        col.addView(RunUi.section(this, "THIS WEEK"))
         col.addView(RunUi.card(this).apply {
             addView(RunUi.statGrid(ctx, listOf(
-                Triple(RunMath.miles(miles(weekStart)), "miles this week", RunUi.ACCENT),
+                Triple(RunMath.miles(miles(weekStart)), "miles this week", Color.WHITE),
+                Triple("${runs.count { it.optLong("start") >= weekStart }}", "runs", Color.WHITE),
                 Triple(RunMath.miles(miles(monthStart)), "miles this month", Color.WHITE),
-                Triple("${runs.count { it.optLong("start") >= weekStart }}", "runs this week", Color.WHITE),
             )))
-        })
-
-        // Readiness: morning HRV check (watch) + sleep (Samsung Health) + recent training.
-        val rd = io.github.michealsizemore1.top25widget.Readiness.compute(io.github.michealsizemore1.top25widget.ReadinessSync.checks(this),
-            io.github.michealsizemore1.top25widget.ReadinessSync.nights(this), runs.take(120), io.github.michealsizemore1.top25widget.Readiness.today())
-        col.addView(RunUi.card(this).apply {
-            addView(RunUi.text(ctx, "READINESS", RunUi.MUTED, 11f, true))
-            if (rd == null) addView(RunUi.text(ctx, "Do the 2½-minute morning check on the watch ▸", RunUi.ACCENT, 15f, true))
-            else {
-                addView(RunUi.text(ctx, "${rd.score} · ${rd.label}" + (if (!rd.checkedToday) "  (no morning check)" else ""), rd.color, 20f, true))
-                addView(RunUi.text(ctx, rd.parts.joinToString(" · ") { "${it.name} ${it.value}" }, Color.WHITE, 12f))
-                addView(RunUi.text(ctx, rd.advice, RunUi.MUTED, 12f).apply { setPadding(0, dp(4), 0, 0) })
+            if (runs.isNotEmpty()) {
+                addView(RunUi.text(ctx, "Load: ${ld.status}" + (ld.ratio?.let { String.format(Locale.US, " · ratio %.2f", it) } ?: "") +
+                    "  ·  ${ld.acute} stress, last 7 days", ld.color, 13f, true).apply { setPadding(0, dp(8), 0, 0) })
+                if (ld.ratio != null && ld.ratio > 1.3) addView(RunUi.text(ctx, ld.advice, RunUi.MUTED, 12f))
             }
-            setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) }
+            setOnClickListener { startActivity(Intent(ctx, FitnessActivity::class.java)) }
         })
 
-        // Command Center and LiveTrack (same buttons as the watch).
-        val unsentCc = runs.map { it.optLong("start") }.filter { !PhoneRuns.sentToCommandCenter(this, it) }
-        col.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(10), 0, 0)
-            fun pill(title: String, status: String, color: Int, onClick: () -> Unit) =
-                LinearLayout(ctx).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER
-                    background = RunUi.rounded(color, dp(18).toFloat())
-                    setPadding(dp(6), dp(10), dp(6), dp(10))
-                    addView(RunUi.text(ctx, title, Color.WHITE, 15f, true).apply { gravity = Gravity.CENTER })
-                    addView(RunUi.text(ctx, status, 0xDDFFFFFF.toInt(), 12f).apply { gravity = Gravity.CENTER })
-                    setOnClickListener { onClick() }
-                }
-            val lp = { last: Boolean -> LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { if (!last) marginEnd = dp(8) } }
-            addView(pill("Command Center", if (unsentCc.isEmpty()) "✓ all sent" else "Send ${unsentCc.size}", RunUi.CC) {
-                if (unsentCc.isEmpty()) Toast.makeText(ctx, "All runs are already in the Command Center", Toast.LENGTH_SHORT).show()
-                else CommandCenter.send(ctx, unsentCc)
-            }, lp(false))
-            // LiveTrack on/off (same switch as the watch).
-            val live = getSharedPreferences("runsettings", 0).getBoolean("liveOn", false)
-            addView(pill("LiveTrack", if (live) "● ON" else "Off", if (live) 0xFF1F6FB2.toInt() else 0xFF50555E.toInt()) {
-                if (Live.db(ctx).isBlank()) startActivity(Intent(ctx, LiveTrackActivity::class.java))
-                else {
-                    RunSettings.setBool(ctx, "liveOn", !live)
-                    Toast.makeText(ctx, if (!live) "LiveTrack on — on your watch too" else "LiveTrack off", Toast.LENGTH_SHORT).show()
-                    recreate()
-                }
-            }, lp(true))
-        })
-
-        // Workouts & plan, with today's workout.
-        val todayW = WorkoutStore.plan(this).optJSONObject(WorkoutStore.dayFmt.format(Date()))
-        col.addView(RunUi.card(this).apply {
-            addView(LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                addView(LinearLayout(ctx).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(RunUi.text(ctx, "TODAY", RunUi.MUTED, 11f, true))
-                    addView(RunUi.text(ctx, todayW?.optString("name") ?: "No workout planned", Color.WHITE, 17f, true))
-                    todayW?.let { w ->
-                        addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Workouts.outline(w, RunSettings.hrMax(ctx),
-                            RunSettings.hrRest(ctx), RunSettings.cp(ctx)).take(4).joinToString("\n"), RunUi.MUTED, 12f))
-                    }
-                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                addView(RunUi.button(ctx, "Workouts & Plan", RunUi.ACCENT) {
-                    startActivity(Intent(ctx, WorkoutsActivity::class.java))
-                })
-            })
-            // Trail chosen for the next run (same on the watch).
-            io.github.michealsizemore1.top25widget.TrailSync.current(ctx)?.let { (t, oab) ->
-                addView(RunUi.text(ctx, "Trail: ${t.name} · " + String.format(java.util.Locale.US, "%.1f mi", t.lengthM / 1609.344 * (if (oab) 2 else 1)) +
-                    (if (oab) " out & back" else ""), 0xFF46C46E.toInt(), 13f, true).apply { setPadding(0, RunUi.dp(ctx, 8), 0, 0) })
+        // 4. FITNESS: 2×2 tiles (tap for the charts).
+        if (runs.isNotEmpty()) {
+            val (z2now, z2before) = I.z2Trend(runs.take(200), hrMax, hrRest)
+            val D = io.github.michealsizemore1.top25widget.Decoupling
+            val now = System.currentTimeMillis()
+            val dec = runs.take(120).filter { now - it.optLong("start") < 28 * 86_400_000L }
+                .mapNotNull { r -> D.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.main }
+            val cpNow = RunSettings.cp(this)
+            val cpE = io.github.michealsizemore1.top25widget.CriticalPower.estimate(runs.take(200), currentCp = cpNow)
+            val rec = I.records(runs.take(200))
+            val latestPb = rec.maxByOrNull { it.value.start }
+            col.addView(RunUi.section(this, "FITNESS"))
+            fun tile(label: String, value: String, sub: String, color: Int, onClick: () -> Unit) = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                background = RunUi.rounded(RunUi.CARD, dp(16).toFloat())
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                addView(RunUi.text(ctx, label, RunUi.MUTED, 11f, true))
+                addView(RunUi.text(ctx, value, color, 18f, true))
+                addView(RunUi.text(ctx, sub, RunUi.MUTED, 11f))
+                setOnClickListener { onClick() }
             }
-            addView(RunUi.button(ctx, "Trails near me", 0xFF46C46E.toInt()) {
-                startActivity(Intent(ctx, TrailsActivity::class.java))
-            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = RunUi.dp(ctx, 10) } })
-        })
-
-        // Training load, Zone 2 fitness, personal bests.
-        run {
-            val all = PhoneRuns.list(this).take(200).mapNotNull { PhoneRuns.read(it) }
-            if (all.isNotEmpty()) {
-                val hrMax = RunSettings.hrMax(this); val hrRest = RunSettings.hrRest(this)
-                // Training load.
-                val ld = io.github.michealsizemore1.top25widget.Insights.load(all)
-                col.addView(RunUi.section(this, "TRAINING LOAD"))
-                col.addView(RunUi.card(this).apply {
-                    addView(RunUi.text(ctx, ld.status, ld.color, 18f, true))
-                    addView(RunUi.statGrid(ctx, listOfNotNull(
-                        Triple("${ld.acute}", "stress, last 7 days", Color.WHITE),
-                        ld.ratio?.let { Triple("${ld.chronicWeek}", "usual week", Color.WHITE) },
-                        ld.ratio?.let { Triple(String.format(java.util.Locale.US, "%.2f", it), "ratio (0.8–1.3 healthy)", ld.color) },
-                        Triple(String.format(java.util.Locale.US, "%.1f", ld.milesWeek), "miles, last 7 days", Color.WHITE),
-                        ld.ratio?.let { Triple(String.format(java.util.Locale.US, "%.1f", ld.milesAvg), "usual weekly miles", Color.WHITE) },
-                    )))
-                    addView(RunUi.text(ctx, ld.advice, RunUi.MUTED, 12f).apply { setPadding(0, dp(6), 0, 0) })
-                    val cpE = io.github.michealsizemore1.top25widget.CriticalPower.estimate(all, currentCp = RunSettings.cp(ctx))
-                    val cpNow = RunSettings.cp(ctx)
-                    addView(RunUi.text(ctx, "Critical power $cpNow W" + (cpE.cp?.let { if (kotlin.math.abs(it - cpNow) >= 3) " · your runs say $it W — tap to review" else " · matches your runs" } ?: " ▸"),
-                        0xFFB18CFF.toInt(), 13f, true).apply { setPadding(0, dp(8), 0, 0); setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) } })
-                })
-                // Zone 2 fitness: pace while HR is in Zone 2, run by run.
-                val z2 = all.mapNotNull { r -> io.github.michealsizemore1.top25widget.Insights.zone2(r, hrMax, hrRest)?.let { r.optLong("start") to it } }.take(12)
-                if (z2.isNotEmpty()) {
-                    val (nowP, beforeP) = io.github.michealsizemore1.top25widget.Insights.z2Trend(all, hrMax, hrRest)
-                    col.addView(RunUi.section(this, "ZONE 2 FITNESS"))
-                    col.addView(RunUi.card(this).apply {
-                        nowP?.let { n ->
-                            addView(RunUi.text(ctx, "Zone 2 pace " + io.github.michealsizemore1.top25widget.RunMath.paceFor(n, io.github.michealsizemore1.top25widget.RunMath.METERS_PER_MILE) + " /mi, last 4 weeks", Color.WHITE, 16f, true))
-                            addView(RunUi.text(ctx, beforeP?.let { b -> val d = b - n
-                                if (d >= 0) "${d} s/mi faster than the 4 weeks before — aerobic fitness is improving" else "${-d} s/mi slower than the 4 weeks before — heat, fatigue or terrain?" }
-                                ?: "Faster pace at the same heart rate = fitter. The comparison starts after 4 weeks.", RunUi.MUTED, 12f))
-                        }
-                        // One bar per run (taller = faster in Zone 2).
-                        val paces = z2.map { it.second.secPerMile }
-                        val slow = paces.max() + 15; val fast = paces.min() - 15
-                        addView(LinearLayout(ctx).apply {
-                            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.BOTTOM
-                            setPadding(0, dp(10), 0, 0)
-                            z2.reversed().forEach { (st, z) ->
-                                addView(LinearLayout(ctx).apply {
-                                    orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
-                                    addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.RunMath.paceFor(z.secPerMile, io.github.michealsizemore1.top25widget.RunMath.METERS_PER_MILE), RunUi.MUTED, 9f).apply { gravity = android.view.Gravity.CENTER })
-                                    addView(android.view.View(ctx).apply { background = RunUi.rounded(0xFF22C55E.toInt(), dp(3).toFloat()) },
-                                        LinearLayout.LayoutParams(dp(14), dp(10 + ((slow - z.secPerMile) * 60 / maxOf(1, slow - fast)))))
-                                    addView(RunUi.text(ctx, java.text.SimpleDateFormat("M/d", java.util.Locale.US).format(java.util.Date(st)), RunUi.DIM, 9f).apply { gravity = android.view.Gravity.CENTER })
-                                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                            }
-                        })
-                    })
-                }
-                // Personal bests.
-                val rec = io.github.michealsizemore1.top25widget.Insights.records(all)
-                if (rec.isNotEmpty()) {
-                    col.addView(RunUi.section(this, "PERSONAL BESTS"))
-                    col.addView(RunUi.card(this).apply {
-                        rec.forEach { (k, pb) ->
-                            addView(LinearLayout(ctx).apply {
-                                orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(4), 0, dp(4))
-                                addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Insights.pbName(k), Color.WHITE, 15f, true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                                addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Insights.clock(pb.sec) + "   " + java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date(pb.start)),
-                                    0xFFF2C94C.toInt(), 15f, true))
-                            })
-                        }
-                        addView(RunUi.text(ctx, "Fastest stretch inside any run recorded in BeyondStride.", RunUi.DIM, 11f).apply { setPadding(0, dp(4), 0, 0) })
-                    })
-                }
+            fun row(a: android.view.View, b: android.view.View) = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+                addView(a, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { marginEnd = dp(8) })
+                addView(b, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
             }
+            val openFit = { startActivity(Intent(ctx, FitnessActivity::class.java)) }
+            col.addView(row(
+                tile("ZONE 2 PACE", z2now?.let { RunMath.paceFor(it, RunMath.METERS_PER_MILE) + " /mi" } ?: "—",
+                    z2now?.let { n -> z2before?.let { b -> val d = b - n; if (d >= 0) "${d}s faster than before" else "${-d}s slower than before" } ?: "last 4 weeks" } ?: "no Zone 2 runs yet",
+                    Color.WHITE, openFit),
+                tile("DECOUPLING", if (dec.isEmpty()) "—" else D.text(dec.average()), if (dec.isEmpty()) "needs a 30+ min steady run" else D.rating(dec.average()),
+                    if (dec.isEmpty()) Color.WHITE else D.color(dec.average()), openFit),
+            ))
+            col.addView(row(
+                tile("CRITICAL POWER", "$cpNow W", cpE.cp?.let { if (kotlin.math.abs(it - cpNow) >= 3) "runs say $it W ▸" else "matches your runs" } ?: "needs a hard effort to update",
+                    Color.WHITE) { startActivity(Intent(ctx, ReadinessActivity::class.java)) },
+                tile("PERSONAL BESTS", latestPb?.let { I.clock(it.value.sec) } ?: "—",
+                    latestPb?.let { I.pbName(it.key) + " · " + SimpleDateFormat("MMM d", Locale.US).format(Date(it.value.start)) } ?: "after your first runs",
+                    if (latestPb != null) 0xFFF2C94C.toInt() else Color.WHITE, openFit),
+            ))
         }
-
-        // Aerobic decoupling trend: steady runs of 40+ minutes.
-        run {
-            val pts = PhoneRuns.list(this).take(120).mapNotNull { f -> PhoneRuns.read(f) }
-                .mapNotNull { r -> io.github.michealsizemore1.top25widget.Decoupling.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.let { r.optLong("start") to it.main!! } }
-                .take(10)
-            if (pts.size >= 2) {
-                col.addView(RunUi.section(this, "AEROBIC DECOUPLING · STEADY RUNS"))
-                col.addView(RunUi.card(this).apply {
-                    val now = System.currentTimeMillis()
-                    val recent = pts.filter { now - it.first < 28 * 86_400_000L }.map { it.second }
-                    val older = pts.filter { now - it.first >= 28 * 86_400_000L }.map { it.second }
-                    if (recent.isNotEmpty()) {
-                        val avg = recent.average()
-                        addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Decoupling.text(avg) + " average, last 4 weeks", io.github.michealsizemore1.top25widget.Decoupling.color(avg), 18f, true))
-                        if (older.isNotEmpty()) {
-                            val diff = avg - older.average()
-                            addView(RunUi.text(ctx, (if (diff <= 0) "Improving: " else "Up: ") + String.format(java.util.Locale.US, "%+.1f", diff) +
-                                " pts vs earlier runs" + (if (diff <= 0) " — aerobic base is building" else " — check heat, fatigue or pace"), RunUi.MUTED, 12f))
-                        }
-                    }
-                    // One bar per run, oldest → newest.
-                    addView(LinearLayout(ctx).apply {
-                        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.BOTTOM
-                        setPadding(0, RunUi.dp(ctx, 10), 0, 0)
-                        pts.reversed().forEach { (st, v) ->
-                            addView(LinearLayout(ctx).apply {
-                                orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
-                                addView(RunUi.text(ctx, String.format(java.util.Locale.US, "%.0f", v), RunUi.MUTED, 10f).apply { gravity = android.view.Gravity.CENTER })
-                                addView(android.view.View(ctx).apply { background = RunUi.rounded(io.github.michealsizemore1.top25widget.Decoupling.color(v), RunUi.dp(ctx, 3).toFloat()) },
-                                    LinearLayout.LayoutParams(RunUi.dp(ctx, 14), RunUi.dp(ctx, (6 + v.coerceIn(0.0, 15.0) * 4).toInt())))
-                                addView(RunUi.text(ctx, java.text.SimpleDateFormat("M/d", java.util.Locale.US).format(java.util.Date(st)), RunUi.DIM, 9f).apply { gravity = android.view.Gravity.CENTER })
-                            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                        }
-                    })
-                })
-            }
-        }
-        col.addView(RunUi.section(this, "RUNS FROM YOUR WATCH"))
+        }  // !showAll
+        col.addView(RunUi.section(this, if (showAll) "ALL RUNS" else "RECENT RUNS"))
         if (runs.isEmpty()) {
             col.addView(RunUi.text(this, "No runs yet. Finish a run on the watch and it appears here automatically " +
                 "(the watch sends it whenever it's connected to this phone).", RunUi.MUTED, 14f).apply { setPadding(dp(4), dp(10), dp(4), 0) })
         }
         val fmt = SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault())
-        runs.forEach { run ->
+        (if (showAll) runs else runs.take(5)).forEach { run ->
             val start = run.optLong("start")
             col.addView(RunUi.card(this).apply {
                 addView(LinearLayout(ctx).apply {
@@ -328,7 +266,7 @@ class RunsActivity : Activity() {
                 })
                 addView(RunUi.text(ctx, fmt.format(Date(start)), RunUi.MUTED, 12f))
                 addView(RunUi.statGrid(ctx, listOf(
-                    Triple(RunMath.miles(run.optDouble("distance")), "miles", RunUi.ACCENT),
+                    Triple(RunMath.miles(run.optDouble("distance")), "miles", Color.WHITE),
                     Triple(RunMath.clock(run.optInt("movingSeconds")), "time", Color.WHITE),
                     Triple(RunMath.paceFor(run.optInt("movingSeconds"), run.optDouble("distance")), "pace /mi", Color.WHITE),
                 ) + listOfNotNull(
@@ -339,9 +277,15 @@ class RunsActivity : Activity() {
                 setOnClickListener { startActivity(Intent(ctx, RunDetailActivity::class.java).putExtra("start", start)) }
             })
         }
+        if (!showAll && runs.size > 5) col.addView(RunUi.button(this, "See all ${runs.size} runs", RunUi.CARD, Color.WHITE) {
+            startActivity(Intent(ctx, AllRunsActivity::class.java))
+        }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
         setContentView(ScrollView(this).apply {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
     }
 }
+
+/** Every run (from "See all runs" on the home screen). */
+class AllRunsActivity : RunsActivity()
