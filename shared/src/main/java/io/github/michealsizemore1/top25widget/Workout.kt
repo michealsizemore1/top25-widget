@@ -96,6 +96,20 @@ object Workouts {
     }
 
     /** One line per step, e.g. "Run 3 mi · Z4 HR 157–170". */
+    /**
+     * Workout notes for reading: drops markdown marks (**, ##) and anything after a "---" divider or a
+     * "Total:" line (the plan's week summary that comes along when a plan is imported).
+     */
+    fun cleanNotes(s: String): String {
+        val out = ArrayList<String>()
+        for (raw in s.lines()) {
+            val l = raw.replace("**", "").trim()
+            if (l.matches(Regex("-{3,}")) || l.startsWith("#") || l.startsWith("Total:", ignoreCase = true)) break
+            out += l
+        }
+        return out.joinToString("\n").trim()
+    }
+
     fun outline(w: JSONObject, hrMax: Double, hrRest: Double, cp: Int): List<String> {
         val lines = mutableListOf<String>()
         val steps = w.optJSONArray("steps") ?: return lines

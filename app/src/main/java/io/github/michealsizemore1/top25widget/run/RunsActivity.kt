@@ -139,6 +139,9 @@ open class RunsActivity : Activity() {
                 addView(RunUi.text(ctx, todayW?.optString("name") ?: "No workout planned", Color.WHITE, 17f, true))
                 todayW?.let { w ->
                     addView(RunUi.text(ctx, io.github.michealsizemore1.top25widget.Workouts.outline(w, hrMax, hrRest, RunSettings.cp(ctx)).take(4).joinToString("\n"), RunUi.MUTED, 12f))
+                    io.github.michealsizemore1.top25widget.Workouts.cleanNotes(w.optString("notes")).takeIf { it.isNotBlank() }?.let { n ->
+                        addView(RunUi.text(ctx, n, Color.WHITE, 12f).apply { setPadding(0, dp(6), 0, 0) })
+                    }
                 }
                 io.github.michealsizemore1.top25widget.TrailSync.current(ctx)?.let { (t, oab) ->
                     addView(RunUi.text(ctx, "Trail: ${t.name} · " + String.format(Locale.US, "%.1f mi", t.lengthM / 1609.344 * (if (oab) 2 else 1)) +

@@ -343,8 +343,9 @@ class RunActivity : Activity() {
             ready.setOnClickListener { startActivity(Intent(this@RunActivity, MorningCheckActivity::class.java).putExtra("start", !Recovery.checkedToday(this@RunActivity))) }
             readySub.setOnClickListener { ready.performClick() }
             addView(View(this@RunActivity).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(6); bottomMargin = dp(6) })
-            addView(label("", Color.WHITE, 15f, true).also { startValues["workout"] = it; it.setOnClickListener { showWorkoutPicker() } })
-            addView(label("", C.MUTED, 10f).apply { startValues["workoutOutline"] = this; visibility = View.GONE; setOnClickListener { showWorkoutPicker() } })
+            val openW = { Run.workout?.let { showWorkoutDetail(it, "Today", chosen = true) } ?: showWorkoutPicker() }
+            addView(label("", Color.WHITE, 15f, true).also { startValues["workout"] = it; it.setOnClickListener { openW() } })
+            addView(label("", C.MUTED, 10f).apply { startValues["workoutOutline"] = this; visibility = View.GONE; setOnClickListener { openW() } })
             addView(label("", 0xFF46C46E.toInt(), 11f, true).apply { startValues["trailLine"] = this; visibility = View.GONE })
             Thread {
                 val r = try { Recovery.result(this@RunActivity) } catch (e: Exception) { null }
@@ -1064,6 +1065,41 @@ class RunActivity : Activity() {
     }
 
     /** Pick today's planned workout, one from the library, or a free run. */
+    /** One workout in full (like the phone): every step with its targets, and the notes (e.g. strength exercises). */
+    private fun showWorkoutDetail(wk: org.json.JSONObject, dayLabel: String, chosen: Boolean = false) {
+        overlayOpen = true; startBuilt = false
+        val w = resources.displayMetrics.widthPixels
+        val col = column().apply { setPadding(w / 9, w / 8, w / 9, w / 5) }
+        if (dayLabel.isNotBlank()) col.addView(label(dayLabel.uppercase(), C.ACCENT, 11f, true))
+        col.addView(label(wk.optString("name"), Color.WHITE, 17f, true))
+        val steps = io.github.michealsizemore1.top25widget.Workouts.outline(wk, Run.hrMax, Run.hrRest, Run.criticalPower)
+        if (steps.isNotEmpty()) col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(C.CARD, 16)
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+            addView(label("STEPS", C.ACCENT, 10f, true).apply { gravity = Gravity.START })
+            addView(label(steps.joinToString("\n"), Color.WHITE, 12f).apply { gravity = Gravity.START })
+        })
+        val notes = io.github.michealsizemore1.top25widget.Workouts.cleanNotes(wk.optString("notes"))
+        if (notes.isNotBlank()) col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(C.CARD, 16)
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+            addView(label("NOTES", C.ACCENT, 10f, true).apply { gravity = Gravity.START })
+            addView(label(notes, Color.WHITE, 12f).apply { gravity = Gravity.START })
+        })
+        fun btn(t: String, bg: Int, fg: Int, go: () -> Unit) = col.addView(label(t, fg, 14f, true).apply {
+            background = rounded(bg, 22); setPadding(0, dp(9), 0, dp(9))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+            setOnClickListener { go() }
+        })
+        if (chosen) btn("Change workout", C.CARD, Color.WHITE) { showWorkoutPicker() }
+        else btn("Use this workout", C.ACCENT, Color.BLACK) { Run.chooseWorkout(wk); overlayOpen = false; startBuilt = false; renderStart() }
+        btn("Back", C.CARD, Color.WHITE) { if (chosen) { overlayOpen = false; startBuilt = false; renderStart() } else showWorkoutPicker() }
+        root.removeAllViews()
+        root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
+    }
+
     /** Same four tabs as the phone. [selected]: 0 Today, 1 Fitness, 2 Plan, 3 Runs. */
     private fun menuRow(selected: Int) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -1185,8 +1221,8 @@ class RunActivity : Activity() {
             addView(label(title, Color.WHITE, 14f, true))
             if (sub.isNotBlank()) addView(label(sub, C.MUTED, 10f))
             setOnClickListener {
-                Run.chooseWorkout(workout)
-                overlayOpen = false; startBuilt = false; renderStart()
+                if (workout == null) { Run.chooseWorkout(null); overlayOpen = false; startBuilt = false; renderStart() }
+                else showWorkoutDetail(workout, title.substringBefore(":").takeIf { title.contains(":") } ?: "")
             }
         }
         fun outline(x: org.json.JSONObject) =
