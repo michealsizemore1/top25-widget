@@ -17,6 +17,11 @@ import io.github.michealsizemore1.top25widget.RunMath
 
 /** Zones (sent to the watch), Command Center link, and Stryd connection. */
 class RunSettingsActivity : Activity() {
+    /** null = the list of setting groups; otherwise the open group. */
+    private var page: String? = null
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() { if (page != null) { page = null; render() } else @Suppress("DEPRECATION") super.onBackPressed() }
 
     override fun onResume() {
         super.onResume()
@@ -31,7 +36,11 @@ class RunSettingsActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(40), dp(16), dp(40))
         }
-        col.addView(RunUi.text(this, "Run settings", Color.WHITE, 26f, true))
+        val titles = mapOf("run" to "Run options", "audio" to "Audio prompts", "zones" to "Zones & power", "cc" to "Command Center", "backup" to "Backup", "about" to "About")
+        col.addView(RunUi.text(this, page?.let { titles[it] } ?: "Settings", Color.WHITE, 26f, true))
+        if (page == null) { renderList(col); return }
+        val sync = RunUi.text(this, "Same on the watch — changes on either show on both.", RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(4), 0, 0) }
+        if (page in setOf("run", "audio", "zones")) col.addView(sync)
 
         fun input(label: String, value: String, type: Int, hint: String = ""): EditText {
             col.addView(RunUi.text(ctx, label, RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(12), 0, dp(2)) })
@@ -47,17 +56,7 @@ class RunSettingsActivity : Activity() {
         val dec = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         fun fmt(d: Double) = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
 
-        // ---- watch screens
-        col.addView(RunUi.button(this, "Watch data screens ›", RunUi.ACCENT) {
-            startActivity(Intent(ctx, ScreensActivity::class.java))
-        }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(14) } })
-
-        col.addView(RunUi.button(this, "LiveTrack ›", 0xFF4FA3E0.toInt(), Color.WHITE) {
-            startActivity(Intent(ctx, LiveTrackActivity::class.java))
-        }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
-
         // ---- run options (same as the watch's Settings; changes on either show on both)
-        col.addView(RunUi.section(this, "RUN OPTIONS · SAME ON WATCH"))
         fun switch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) =
             col.addView(RunUi.card(ctx).apply {
                 addView(Switch(ctx).apply {
@@ -67,6 +66,7 @@ class RunSettingsActivity : Activity() {
                 })
                 if (sub.isNotBlank()) addView(RunUi.text(ctx, sub, RunUi.MUTED, 12f))
             })
+        if (page == "run") {
         switch("Use GPS for pace & distance", "Off = Stryd footpod (recommended)", RunSettings.source(this) == "gps") {
             RunSettings.setSource(ctx, if (it) "gps" else "stryd")
         }
@@ -114,8 +114,9 @@ class RunSettingsActivity : Activity() {
             }
         })
 
+        }
         // ---- audio prompts
-        col.addView(RunUi.section(this, "AUDIO PROMPTS · SAME ON WATCH"))
+        if (page == "audio") {
         col.addView(RunUi.text(this, "Spoken on the watch: through Bluetooth headphones when connected, otherwise the watch speaker.",
             RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(6), dp(4), 0) })
         switch("Audio prompts", "", RunSettings.bool(this, "voice")) { RunSettings.setBool(ctx, "voice", it) }
@@ -141,8 +142,9 @@ class RunSettingsActivity : Activity() {
             }
         })
 
+        }
         // ---- zones
-        col.addView(RunUi.section(this, "ZONES · SAME ON WATCH"))
+        if (page == "zones") {
         val maxHr = input("Max heart rate (bpm)", fmt(RunSettings.hrMax(this)), num)
         val restHr = input("Resting heart rate (bpm)", fmt(RunSettings.hrRest(this)), dec)
         val cp = input("Critical Power (W)", RunSettings.cp(this).toString(), num)
@@ -162,27 +164,32 @@ class RunSettingsActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         }) }
 
-        // ---- Command Center
-        col.addView(RunUi.section(this, "MY LIFE COMMAND CENTER"))
-        val cc = input("Command Center page", RunSettings.ccUrl(this), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
-
-        col.addView(RunUi.button(this, "Save settings", RunUi.ACCENT) {
+        col.addView(RunUi.button(this, "Save zones", RunUi.ACCENT) {
             val mh = maxHr.text.toString().toDoubleOrNull(); val rh = restHr.text.toString().toDoubleOrNull()
             val c = cp.text.toString().toIntOrNull(); val k = cal.text.toString().toDoubleOrNull()
             if (mh == null || rh == null || c == null || k == null || mh <= rh || k !in 0.8..1.2) {
                 Toast.makeText(ctx, "Check the numbers (calibration is usually 0.95–1.05)", Toast.LENGTH_LONG).show(); return@button
             }
-            RunSettings.save(ctx, mh, rh, c, k, cc.text.toString().trim().ifBlank { RunSettings.ccUrl(ctx) })
+            RunSettings.save(ctx, mh, rh, c, k, RunSettings.ccUrl(ctx))
             Toast.makeText(ctx, "Saved — sent to your watch", Toast.LENGTH_SHORT).show()
         }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) } })
+        }
+        // ---- Command Center
+        if (page == "cc") {
+            val cc = input("Command Center page", RunSettings.ccUrl(this), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
+            col.addView(RunUi.text(this, "Where finished runs are sent and where \"Send plan to BeyondStride\" comes from.", RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(6), 0, 0) })
+            col.addView(RunUi.button(this, "Save", RunUi.ACCENT) {
+                RunSettings.save(ctx, RunSettings.hrMax(ctx), RunSettings.hrRest(ctx), RunSettings.cp(ctx), RunSettings.cal(ctx), cc.text.toString().trim().ifBlank { RunSettings.ccUrl(ctx) })
+                Toast.makeText(ctx, "Saved", Toast.LENGTH_SHORT).show()
+            }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) } })
+        }
 
         // (Stryd account sign-in removed: Stryd only has runs after the pod's offline sync, which isn't used.
         //  The pod itself still pairs with the watch for pace, distance, power and cadence.)
         getSharedPreferences("strydcloud", 0).edit().clear().apply()   // forget any old Stryd login
 
-        // ---- Versions
         // ---- backup
-        col.addView(RunUi.section(this, "BACKUP"))
+        if (page == "backup") {
         col.addView(RunUi.card(this).apply {
             val at = Backup.lastAt(ctx)
             addView(RunUi.text(ctx, if (at == 0L) "No backup yet" else "Last backup: " +
@@ -205,8 +212,9 @@ class RunSettingsActivity : Activity() {
             }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) } })
         })
         switch("Update the backup after every run", "Keeps the saved backup file current automatically", Backup.auto(this)) { Backup.setAuto(ctx, it) }
+        }
 
-        col.addView(RunUi.section(this, "APP VERSIONS"))
+        if (page == "about") {
         col.addView(RunUi.text(this, "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName, RunUi.MUTED, 13f)
             .apply { setPadding(dp(4), dp(6), 0, 0) })
         val watchVer = RunUi.text(this, "Watch app: checking…", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(4), 0, 0) }
@@ -221,11 +229,51 @@ class RunSettingsActivity : Activity() {
             } catch (e: Exception) { "Watch app: not connected" }
             runOnUiThread { watchVer.text = v }
         }.start()
+        }
 
-        setContentView(ScrollView(this).apply {
-            setBackgroundColor(RunUi.BG)
-            addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        show(col)
+    }
+
+    private fun show(col: LinearLayout) = setContentView(ScrollView(this).apply {
+        setBackgroundColor(RunUi.BG)
+        addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    })
+
+    /** The list of setting groups: icon · name · current value · ›  (like Gear Tracker II). */
+    private fun renderList(col: LinearLayout) {
+        val ctx = this
+        fun dp(v: Int) = RunUi.dp(ctx, v)
+        val p = getSharedPreferences("runsettings", 0)
+        fun onOff(b: Boolean) = if (b) "on" else "off"
+        fun row(icon: String, title: String, value: String, onClick: () -> Unit) = col.addView(LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+            background = RunUi.rounded(RunUi.CARD, dp(18).toFloat())
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
+            addView(RunUi.text(ctx, icon, RunUi.ACCENT, 26f, true).apply { gravity = android.view.Gravity.CENTER }, LinearLayout.LayoutParams(dp(44), WRAP_CONTENT))
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(8), 0)
+                addView(RunUi.text(ctx, title, Color.WHITE, 18f))
+                if (value.isNotBlank()) addView(RunUi.text(ctx, value, 0xFF5FD38D.toInt(), 13f))
+            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(RunUi.text(ctx, "›", RunUi.MUTED, 28f))
+            setOnClickListener { onClick() }
         })
+        fun fmt(d: Double) = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
+        val screens = try { org.json.JSONArray(p.getString("screens", "[]")).length() } catch (e: Exception) { 0 }
+        row("▦", "Watch data screens", if (screens > 0) "$screens screens" else "Choose what the watch shows") { startActivity(Intent(ctx, ScreensActivity::class.java)) }
+        row("➤", "Run options", (if (RunSettings.source(ctx) == "gps") "GPS" else "Stryd") + " · auto-pause ${onOff(RunSettings.bool(ctx, "autoPause"))}" +
+            " · HR cap " + when (p.getString("hrCap", "easy")) { "off" -> "off"; "all" -> "all runs"; else -> "easy days" }) { page = "run"; render() }
+        row("♪", "Audio prompts", if (!RunSettings.bool(ctx, "voice")) "Off" else "On · mile alerts ${onOff(RunSettings.bool(ctx, "voiceMiles"))}" +
+            (if (p.getString("voiceMusic", "duck") == "pause") " · pause music" else " · lower music")) { page = "audio"; render() }
+        row("∿", "Zones & power", "Max ${fmt(RunSettings.hrMax(ctx))} · Rest ${fmt(RunSettings.hrRest(ctx))} · CP ${RunSettings.cp(ctx)} W") { page = "zones"; render() }
+        row("◉", "LiveTrack", if (Live.db(ctx).isBlank()) "Not set up" else if (p.getBoolean("liveOn", false)) "On · ${Live.contacts(ctx).size} contact(s)" else "Off") {
+            startActivity(Intent(ctx, LiveTrackActivity::class.java)) }
+        row("⌂", "Command Center", try { Uri.parse(RunSettings.ccUrl(ctx)).host ?: "" } catch (e: Exception) { "" }) { page = "cc"; render() }
+        row("⇪", "Backup", Backup.lastAt(ctx).takeIf { it > 0 }?.let { "Last: " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(it)) +
+            (if (Backup.auto(ctx) && Backup.uri(ctx) != null) " · auto" else "") } ?: "Not set up") { page = "backup"; render() }
+        row("ⓘ", "About", "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName) { page = "about"; render() }
+        show(col)
     }
 
     private fun newBackup() {
