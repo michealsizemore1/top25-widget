@@ -329,7 +329,7 @@ class RunActivity : Activity() {
             background = rounded(C.CARD, 16)
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
         }
-        fun head(t: String) = label(t, C.MUTED, 10f, true)
+        fun head(t: String) = label(t, C.ACCENT, 11f, true).apply { letterSpacing = 0.08f }
         col.addView(label("BeyondStride", Color.WHITE, 20f, true))
 
         // 1. TODAY: readiness + workout (+ trail), then START right under it.

@@ -54,8 +54,12 @@ object RunUi {
             setOnClickListener { onClick() }
         }
 
-    fun section(ctx: Context, title: String) = text(ctx, title, MUTED, 12f, true).apply {
-        letterSpacing = 0.1f; setPadding(dp(ctx, 4), dp(ctx, 18), 0, 0)
+    /** Section heading: lime with a short bar in front, so it stands apart from card text. */
+    fun section(ctx: Context, title: String) = text(ctx, title, ACCENT, 15f, true).apply {
+        letterSpacing = 0.08f; setPadding(dp(ctx, 2), dp(ctx, 22), 0, dp(ctx, 2))
+        val bar = GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 2).toFloat(); setSize(dp(ctx, 4), dp(ctx, 16)) }
+        bar.setBounds(0, 0, dp(ctx, 4), dp(ctx, 16))
+        setCompoundDrawables(bar, null, null, null); compoundDrawablePadding = dp(ctx, 8)
     }
 
     /** A grid of big numbers with small labels, 3 per row. */

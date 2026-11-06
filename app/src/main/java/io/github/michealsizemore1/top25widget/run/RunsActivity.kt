@@ -125,7 +125,8 @@ open class RunsActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 if (rd == null) addView(RunUi.text(ctx, "Readiness: do the 2½-min morning check on the watch ▸", RunUi.ACCENT, 15f, true))
                 else {
-                    addView(RunUi.text(ctx, "${rd.score}  ${rd.label}" + (if (!rd.checkedToday) "  ·  no morning check" else ""), rd.color, 22f, true))
+                    addView(RunUi.text(ctx, "${rd.score}  ${rd.label}", rd.color, 22f, true))
+                    if (!rd.checkedToday) addView(RunUi.text(ctx, "No morning check yet — based on sleep and training", RunUi.MUTED, 12f))
                     addView(RunUi.text(ctx, rd.parts.filter { it.pts >= 0 }.joinToString(" · ") { "${it.name} ${it.value}" }, RunUi.MUTED, 12f))
                     addView(RunUi.text(ctx, rd.advice.substringBefore(". ") + ".", Color.WHITE, 13f).apply { setPadding(0, dp(4), 0, 0) })
                 }
@@ -190,9 +191,9 @@ open class RunsActivity : Activity() {
         col.addView(RunUi.section(this, "THIS WEEK"))
         col.addView(RunUi.card(this).apply {
             addView(RunUi.statGrid(ctx, listOf(
-                Triple(RunMath.miles(miles(weekStart)), "miles this week", Color.WHITE),
+                Triple(RunMath.miles(miles(weekStart)), "miles", Color.WHITE),
                 Triple("${runs.count { it.optLong("start") >= weekStart }}", "runs", Color.WHITE),
-                Triple(RunMath.miles(miles(monthStart)), "miles this month", Color.WHITE),
+                Triple(RunMath.miles(miles(monthStart)), "this month", Color.WHITE),
             )))
             if (runs.isNotEmpty()) {
                 addView(RunUi.text(ctx, "Load: ${ld.status}" + (ld.ratio?.let { String.format(Locale.US, " · ratio %.2f", it) } ?: "") +
