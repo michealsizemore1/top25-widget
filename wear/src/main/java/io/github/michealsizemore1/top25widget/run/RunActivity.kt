@@ -449,7 +449,7 @@ class RunActivity : Activity() {
         // Menu row — same as the phone's bottom tabs: Today · Fitness · Plan · Runs (Settings under it).
         col.addView(View(this).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(10) })
         col.addView(menuRow(0))
-        col.addView(label("⚙ Settings", C.MUTED, 12f, true).apply {
+        col.addView(label("⚙ Settings", 0xFFC9D1CE.toInt(), 14f, true).apply {
             setPadding(0, dp(10), 0, dp(6)); setOnClickListener { showSettings = true; startBuilt = false; renderStart() }
         })
 
@@ -1038,8 +1038,8 @@ class RunActivity : Activity() {
                 gravity = Gravity.CENTER
                 addView(label(glyph, if (on) Color.BLACK else Color.WHITE, 17f, true).apply {
                     background = rounded(if (on) C.ACCENT else C.CARD, 18); setPadding(0, dp(5), 0, dp(5)) },
-                    LinearLayout.LayoutParams(dp(38), WRAP_CONTENT))
-                addView(label(name, if (on) Color.WHITE else C.MUTED, 8f, on))
+                    LinearLayout.LayoutParams(dp(42), WRAP_CONTENT))
+                addView(label(name, if (on) Color.WHITE else 0xFFC9D1CE.toInt(), 11f, true).apply { setPadding(0, dp(2), 0, 0) })
                 if (!on) setOnClickListener { go() }
             }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
