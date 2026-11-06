@@ -73,8 +73,14 @@ object Summary {
             section("TRAINING LOAD", listOf(ld.status + " · ${ld.acute} stress last 7 days" + (ld.ratio?.let { String.format(Locale.US, " · ratio %.2f", it) } ?: "")))
         }
 
+        val miles = io.github.michealsizemore1.top25widget.Splits.miles(run)
+        if (miles.size > 1) section("MILE SPLITS", miles.map { sp ->
+            "Mile ${sp.n}" + (if (sp.meters < RunMath.METERS_PER_MILE * 0.95) String.format(Locale.US, " (%.2f)", sp.meters / RunMath.METERS_PER_MILE) else "") +
+                " · " + RunMath.paceFor(sp.sec, sp.meters) + (sp.hr.takeIf { it > 0 }?.let { " @ $it bpm" } ?: "") + (sp.power.takeIf { it > 0 }?.let { " · $it W" } ?: "")
+        })
+
         val laps = run.optJSONArray("laps")
-        if (laps != null && laps.length() > 1) section("SPLITS", (0 until laps.length()).map { i ->
+        if (laps != null && laps.length() > 1) section("LAPS", (0 until laps.length()).map { i ->
             val l = laps.getJSONObject(i)
             "${i + 1}. " + String.format(Locale.US, "%.2f mi", l.optDouble("m") / RunMath.METERS_PER_MILE) + " · " +
                 RunMath.paceFor(l.optInt("sec"), l.optDouble("m")) + (l.optInt("hr").takeIf { it > 0 }?.let { " @ $it bpm" } ?: "")

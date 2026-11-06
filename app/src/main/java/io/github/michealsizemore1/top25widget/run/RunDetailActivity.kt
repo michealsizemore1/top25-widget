@@ -221,10 +221,35 @@ class RunDetailActivity : Activity() {
             })
         }
 
-        // Splits.
+        // Mile splits (automatic, from the samples).
+        val mileSplits = io.github.michealsizemore1.top25widget.Splits.miles(run)
+        if (mileSplits.isNotEmpty()) {
+            col.addView(RunUi.section(this, "MILE SPLITS"))
+            col.addView(RunUi.card(this).apply {
+                fun row(cells: List<String>, color: Int, bold: Boolean) = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, dp(4), 0, dp(4))
+                    cells.forEachIndexed { i, c ->
+                        addView(RunUi.text(ctx, c, color, 13f, bold).apply { gravity = if (i == 0) Gravity.START else Gravity.END },
+                            LinearLayout.LayoutParams(0, WRAP_CONTENT, if (i == 0) 0.7f else 1f))
+                    }
+                }
+                addView(row(listOf("mile", "time", "pace", "HR", "W"), RunUi.MUTED, true))
+                val best = mileSplits.filter { it.meters >= RunMath.METERS_PER_MILE * 0.95 }.minByOrNull { it.sec }
+                mileSplits.forEach { sp ->
+                    addView(row(listOf(
+                        if (sp.meters < RunMath.METERS_PER_MILE * 0.95) String.format(Locale.US, "%.2f", sp.meters / RunMath.METERS_PER_MILE) else "${sp.n}",
+                        RunMath.clock(sp.sec), RunMath.paceFor(sp.sec, sp.meters),
+                        sp.hr.takeIf { it > 0 }?.toString() ?: "–", sp.power.takeIf { it > 0 }?.toString() ?: "–",
+                    ), if (sp == best && mileSplits.size > 2) RunUi.ACCENT else Color.WHITE, false))
+                }
+            })
+        }
+
+        // Laps (lap button / workout steps).
         val laps = run.optJSONArray("laps")
         if (laps != null && laps.length() > 0) {
-            col.addView(RunUi.section(this, "SPLITS"))
+            col.addView(RunUi.section(this, "LAPS"))
             col.addView(RunUi.card(this).apply {
                 fun row(cells: List<String>, color: Int, bold: Boolean) = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL

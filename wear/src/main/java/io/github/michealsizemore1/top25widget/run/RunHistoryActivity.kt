@@ -251,9 +251,24 @@ object RunViews {
         }
         zoneCard(ctx, col, "POWER ZONES", json.optJSONArray("zoneSeconds"), Run.ZONES.map { it.name })
 
+        val mileSplits = io.github.michealsizemore1.top25widget.Splits.miles(json)
+        if (mileSplits.isNotEmpty()) {
+            col.addView(label(ctx, "MILE SPLITS", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
+            col.addView(card(ctx).apply {
+                mileSplits.forEach { sp ->
+                    addView(stat(
+                        "Mile ${sp.n}" + if (sp.meters < Run.METERS_PER_MILE * 0.95) " (${Run.miles(sp.meters)})" else "",
+                        Run.paceFor(sp.sec, sp.meters) +
+                            (sp.power.takeIf { it > 0 }?.let { " · ${it}W" } ?: "") +
+                            (sp.hr.takeIf { it > 0 }?.let { " · $it" } ?: ""),
+                    ))
+                }
+            })
+        }
+
         val laps = json.optJSONArray("laps")
         if (laps != null && laps.length() > 0) {
-            col.addView(label(ctx, "SPLITS", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
+            col.addView(label(ctx, "LAPS", MUTED, 12f, true).apply { setPadding(0, dp(ctx, 10), 0, 0) })
             col.addView(card(ctx).apply {
                 for (i in 0 until laps.length()) {
                     val l = laps.getJSONObject(i)
