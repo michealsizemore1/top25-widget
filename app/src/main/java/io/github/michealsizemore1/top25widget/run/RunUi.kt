@@ -190,6 +190,114 @@ object RunUi {
         } catch (e: Exception) { outline(ctx, track) }
     }
 
+    /**
+     * Route map with a replay: a marker runs the route (with the part already run highlighted), a panel shows
+     * time, distance, pace, heart rate and power at that moment, and each mile has a marker with its split.
+     */
+    fun replay(ctx: Context, run: org.json.JSONObject, track: org.json.JSONArray): View {
+        val samples = run.optJSONArray("samples")
+        val n = track.length()
+        val moving = run.optInt("movingSeconds").coerceAtLeast(1)
+        val hasT = track.optJSONArray(n - 1)?.length() ?: 0 >= 3
+        // Samples by moving second (for distance / HR / power at each GPS point).
+        val sT = IntArray(samples?.length() ?: 0) { samples!!.optJSONArray(it)?.optInt(0) ?: 0 }
+        fun sampleAt(t: Int): org.json.JSONArray? {
+            if (sT.isEmpty()) return null
+            var lo = 0; var hi = sT.size - 1
+            while (lo < hi) { val mid = (lo + hi) / 2; if (sT[mid] < t) lo = mid + 1 else hi = mid }
+            return samples!!.optJSONArray(lo)
+        }
+        val stepBy = maxOf(1, n / 1500)
+        val frames = org.json.JSONArray()
+        var i = 0
+        while (i < n) {
+            val p = track.optJSONArray(i)
+            if (p != null) {
+                val t = if (hasT) p.optDouble(2).toInt() else (moving.toLong() * i / maxOf(1, n - 1)).toInt()
+                val s = sampleAt(t); val s30 = sampleAt(maxOf(0, t - 30))
+                val d = (s?.optInt(1) ?: 0) / 10.0
+                val d30 = (s30?.optInt(1) ?: 0) / 10.0
+                val dt = (s?.optInt(0) ?: t) - (s30?.optInt(0) ?: 0)
+                val pace = if (dt >= 10 && d - d30 > 5) (dt / ((d - d30) / 1609.344)).toInt() else 0
+                frames.put(org.json.JSONArray(listOf(
+                    Math.round(p.optDouble(0) * 1e6) / 1e6, Math.round(p.optDouble(1) * 1e6) / 1e6, t, Math.round(d),
+                    s?.optInt(2) ?: 0, pace, s?.optInt(5) ?: 0)))
+            }
+            i += if (i + stepBy >= n && i != n - 1) (n - 1 - i).coerceAtLeast(1) else stepBy
+        }
+        // Mile markers with splits.
+        val miles = org.json.JSONArray()
+        io.github.michealsizemore1.top25widget.Splits.miles(run).forEach { sp ->
+            if (sp.meters >= 1609.344 * 0.95) miles.put(org.json.JSONObject().put("n", sp.n).put("m", sp.n * 1609.344)
+                .put("pace", RunMath.paceFor(sp.sec, sp.meters)).put("time", RunMath.clock(sp.sec)).put("hr", sp.hr).put("pw", sp.power))
+        }
+        val html = """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+            <style>
+            html,body{margin:0;height:100%;background:#1c2421;font-family:system-ui,sans-serif;color:#fff}
+            #wrap{display:flex;flex-direction:column;height:100%}
+            #m{flex:1}
+            #panel{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;padding:8px 6px 4px;background:#1c2421}
+            .s b{display:block;font-size:17px;font-variant-numeric:tabular-nums}.s span{font-size:10px;color:#9aa3a0;text-transform:uppercase}
+            .s{text-align:center}
+            #ctl{display:flex;align-items:center;gap:8px;padding:4px 8px 10px}
+            button{background:#d4e635;color:#000;border:0;border-radius:18px;font-weight:800;font-size:15px;padding:8px 14px}
+            #spd{background:#2a3330;color:#fff}
+            input[type=range]{flex:1;accent-color:#d4e635}
+            .mi{background:#d4e635;color:#000;border:2px solid #fff;border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;font:800 11px system-ui}
+            .leaflet-popup-content{margin:8px 10px;font:13px system-ui}
+            </style></head><body><div id="wrap">
+            <div id="panel"><div class="s"><b id="vt">0:00</b><span>time</span></div><div class="s"><b id="vd">0.00</b><span>miles</span></div>
+            <div class="s"><b id="vp">–</b><span>pace</span></div><div class="s"><b id="vh" style="color:#ff6b6b">–</b><span>HR</span></div>
+            <div class="s"><b id="vw" style="color:#ffb347">–</b><span>watts</span></div></div>
+            <div id="m"></div>
+            <div id="ctl"><button id="play">▶ Play</button><button id="spd">60×</button><input id="pos" type="range" min="0" max="1000" value="0"></div>
+            </div><script>
+            var F=$frames, MI=$miles;
+            var m=L.map('m',{zoomControl:true,scrollWheelZoom:false});
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+            var all=F.map(function(f){return [f[0],f[1]];});
+            L.polyline(all,{color:'#111',weight:8,opacity:.5}).addTo(m);
+            var full=L.polyline(all,{color:'#d4e635',weight:4,opacity:.35}).addTo(m);
+            var done=L.polyline([],{color:'#d4e635',weight:6}).addTo(m);
+            L.circleMarker(all[0],{radius:6,color:'#fff',weight:2,fillColor:'#46c46e',fillOpacity:1}).addTo(m);
+            L.circleMarker(all[all.length-1],{radius:6,color:'#fff',weight:2,fillColor:'#e5484d',fillOpacity:1}).addTo(m);
+            // Mile markers.
+            MI.forEach(function(x){var k=0;while(k<F.length-1&&F[k][3]<x.m)k++;
+              L.marker(all[k],{icon:L.divIcon({className:'',html:'<div class="mi">'+x.n+'</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(m)
+               .bindPopup('<b>Mile '+x.n+'</b><br>'+x.pace+' /mi · '+x.time+(x.hr?'<br>'+x.hr+' bpm':'')+(x.pw?' · '+x.pw+' W':''));});
+            var dot=L.circleMarker(all[0],{radius:9,color:'#fff',weight:3,fillColor:'#4fa3e0',fillOpacity:1}).addTo(m);
+            function clock(s){s=Math.round(s);var h=Math.floor(s/3600),mm=Math.floor(s%3600/60),ss=s%60;return (h?h+':'+String(mm).padStart(2,'0'):mm)+':'+String(ss).padStart(2,'0');}
+            var T=F[F.length-1][2]||1, t=0, playing=false, speeds=[30,60,120,240], si=1, last=0, idx=0;
+            function frameAt(tt){while(idx<F.length-1&&F[idx+1][2]<=tt)idx++;while(idx>0&&F[idx][2]>tt)idx--;return idx;}
+            function show(follow){var k=frameAt(t),f=F[k];dot.setLatLng([f[0],f[1]]);done.setLatLngs(all.slice(0,k+1));
+              document.getElementById('vt').textContent=clock(t);document.getElementById('vd').textContent=(f[3]/1609.344).toFixed(2);
+              document.getElementById('vp').textContent=f[5]?clock(f[5]):'–';document.getElementById('vh').textContent=f[4]||'–';
+              document.getElementById('vw').textContent=f[6]||'–';document.getElementById('pos').value=Math.round(t/T*1000);
+              if(follow&&!m.getBounds().pad(-0.15).contains(dot.getLatLng()))m.panTo(dot.getLatLng(),{animate:true});}
+            function step(now){if(!playing)return;if(last)t+=Math.min(1,(now-last)/1000)*speeds[si];last=now;
+              if(t>=T){t=T;playing=false;document.getElementById('play').textContent='↺ Replay';}show(true);if(playing)requestAnimationFrame(step);}
+            document.getElementById('play').onclick=function(){if(t>=T){t=0;idx=0;}playing=!playing;last=0;
+              this.textContent=playing?'❚❚ Pause':'▶ Play';if(playing)requestAnimationFrame(step);};
+            document.getElementById('spd').onclick=function(){si=(si+1)%speeds.length;this.textContent=speeds[si]+'×';};
+            document.getElementById('pos').oninput=function(){t=this.value/1000*T;show(true);};
+            function fit(){m.invalidateSize();m.fitBounds(full.getBounds(),{padding:[18,18],maxZoom:17});}
+            var fitted=0;function tryFit(){if(document.getElementById('m').clientHeight>50){fit();fitted++;}}
+            tryFit();[100,300,700,1500].forEach(function(x){setTimeout(tryFit,x);});
+            window.addEventListener('resize',function(){if(fitted<6)tryFit();});show(false);
+            </script></body></html>"""
+        return try {
+            android.webkit.WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                setBackgroundColor(CARD)
+                setOnTouchListener { v, _ -> v.parent?.requestDisallowInterceptTouchEvent(true); false }
+                loadDataWithBaseURL("https://michealsizemore1.github.io/", html, "text/html", "utf-8", null)
+                layoutParams = android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 470))
+            }
+        } catch (e: Exception) { outline(ctx, track) }
+    }
+
     /** Plain route outline (no map) — used if the map can't be shown. */
     fun outline(ctx: Context, track: org.json.JSONArray): View {
         val w = ctx.resources.displayMetrics.widthPixels - dp(ctx, 64)
