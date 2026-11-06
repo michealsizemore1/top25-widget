@@ -280,6 +280,7 @@ class RunActivity : Activity() {
         set("track", if (Run.recordGpsTrack) "On" else "Off")
         set("trailMap", if (prefs.getBoolean("trailMapTiles", true)) "On" else "Off")
         set("textScale", when { prefs.getFloat("textScale", 1.25f) >= 1.45f -> "Extra large"; prefs.getFloat("textScale", 1.25f) >= 1.2f -> "Large"; else -> "Normal" } + " ▸")
+        set("menuStyle", if (prefs.getString("menuStyle", "cards") == "classic") "Classic" else "Cards")
         set("cpauto", when (prefs.getString("cpAuto", "ask")) { "auto" -> "Automatically (raises only)"; "off" -> "Off"; else -> "Ask on the phone" })
         set("hrcap", when (Run.hrCapMode) { "off" -> "Off"; "all" -> "Easy days + free runs · under ${Run.hrCap}"; else -> "Easy days · under ${Run.hrCap}" })
         set("live", if (!prefs.getBoolean("liveOn", false)) "Off" else if (Run.isActive) "On · ${LiveTrack.status}" else "On")
@@ -483,13 +484,31 @@ class RunActivity : Activity() {
         val col = column().apply { setPadding(w / 8, w / 7, w / 8, w / 5) }
         col.addView(label("Settings", Color.WHITE, 18f, true))
 
+        val cards = prefs.getString("menuStyle", "cards") != "classic"
+        val icons = mapOf("live" to "◉", "textScale" to "Aa", "trailMap" to "▲", "hrcap" to "♡", "screensRow" to "▦", "voiceRow" to "♪",
+            "bottomBtn" to "●", "keepOn" to "☼", "source" to "➤", "stryd" to "S", "hrmax" to "∧", "hrrest" to "∨", "cp" to "W",
+            "cpauto" to "↻", "cal" to "±", "gps" to "⌖", "hrmode" to "♡", "hr" to "♥", "autopause" to "Ⅱ", "track" to "⋯", "menuStyle" to "☰")
         fun row(key: String, title: String, onTap: (() -> Unit)?) = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            background = rounded(C.CARD, 14)
+            if (cards) {
+                // Card style: icon · name · value (green) · ›
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(8), dp(8), dp(8))
+                background = rounded(C.CARD, 16)
+                addView(label(icons[key] ?: "•", C.ACCENT, 15f, true), LinearLayout.LayoutParams(dp(26), WRAP_CONTENT))
+                addView(column().apply {
+                    gravity = Gravity.START; setPadding(dp(6), 0, dp(4), 0)
+                    addView(label(title, Color.WHITE, 12f).apply { gravity = Gravity.START })
+                    addView(label("", 0xFF5FD38D.toInt(), 11f).apply { gravity = Gravity.START }.also { startValues[key] = it })
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                if (onTap != null) addView(label("›", C.MUTED, 16f), LinearLayout.LayoutParams(dp(12), WRAP_CONTENT))
+            } else {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                background = rounded(C.CARD, 14)
+                addView(label(title, C.MUTED, 11f))
+                addView(label("", Color.WHITE, 14f, true).also { startValues[key] = it })
+            }
             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
-            addView(label(title, C.MUTED, 11f))
-            addView(label("", Color.WHITE, 14f, true).also { startValues[key] = it })
             if (onTap != null) setOnClickListener { onTap(); if (editorRotary == null && !overlayOpen) renderStart() }
         }
 
@@ -570,6 +589,9 @@ class RunActivity : Activity() {
             Run.recordGpsTrack = !Run.recordGpsTrack; prefs.edit().putBoolean("track", Run.recordGpsTrack).apply()
         }.also { trackRow = it })
 
+        col.addView(row("menuStyle", "Menu style") {
+            prefs.edit().putString("menuStyle", if (cards) "classic" else "cards").apply(); startBuilt = false
+        })
         col.addView(label("Done", Color.BLACK, 16f, true).apply {
             background = rounded(C.ACCENT, 24)
             setPadding(0, dp(10), 0, dp(10))
@@ -951,12 +973,25 @@ class RunActivity : Activity() {
     }
 
     private fun card(title: String, sub: String, titleColor: Int = Color.WHITE, onTap: () -> Unit) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(12), dp(7), dp(12), dp(7))
+        val cards = prefs.getString("menuStyle", "cards") != "classic"
         background = rounded(C.CARD, 14)
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(5) }
-        addView(label(title, titleColor, 14f, true))
-        if (sub.isNotBlank()) addView(label(sub, C.MUTED, 10f))
+        if (cards && sub.isNotBlank()) {
+            // Card style: name · value (green) · ›
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(7), dp(8), dp(7))
+            addView(column().apply {
+                gravity = Gravity.START
+                addView(label(title, if (titleColor == C.ACCENT) Color.WHITE else titleColor, 13f, true).apply { gravity = Gravity.START })
+                addView(label(sub, 0xFF5FD38D.toInt(), 11f).apply { gravity = Gravity.START })
+            }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(label("›", C.MUTED, 16f), LinearLayout.LayoutParams(dp(12), WRAP_CONTENT))
+        } else {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            addView(label(title, titleColor, 14f, true))
+            if (sub.isNotBlank()) addView(label(sub, C.MUTED, 10f))
+        }
         setOnClickListener { onTap() }
     }
 

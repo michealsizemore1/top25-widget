@@ -26,7 +26,8 @@ object SettingsSync {
         "hrMax" to (T.FLOAT to 185f),
         "hrRest" to (T.FLOAT to 43.5f),
         "cp" to (T.INT to 333),
-        "cpAuto" to (T.STRING to "ask"),      // critical power from your runs: ask | auto (raises only) | off
+        "cpAuto" to (T.STRING to "ask"),
+        "menuStyle" to (T.STRING to "cards"), // settings menus: cards (icon · value · ›) or classic      // critical power from your runs: ask | auto (raises only) | off
         "cal" to (T.FLOAT to 1f),
         "screens" to (T.STRING to ""),
         "textScale" to (T.FLOAT to 1.25f),    // watch text size: 1 normal, 1.25 large, 1.5 extra large

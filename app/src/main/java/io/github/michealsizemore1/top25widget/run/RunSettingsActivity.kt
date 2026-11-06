@@ -38,7 +38,23 @@ class RunSettingsActivity : Activity() {
         }
         val titles = mapOf("run" to "Run options", "audio" to "Audio prompts", "zones" to "Zones & power", "cc" to "Command Center", "backup" to "Backup", "about" to "About")
         col.addView(RunUi.text(this, page?.let { titles[it] } ?: "Settings", Color.WHITE, 26f, true))
-        if (page == null) { renderList(col); return }
+        val classic = getSharedPreferences("runsettings", 0).getString("menuStyle", "cards") == "classic"
+        if (page == null && !classic) { renderList(col); return }
+        /** In the classic style every group shows on one long page, with a heading. */
+        fun on(key: String): Boolean {
+            if (page == key) return true
+            if (!(classic && page == null)) return false
+            col.addView(RunUi.section(ctx, (titles[key] ?: key).uppercase()))
+            return true
+        }
+        if (classic && page == null) {
+            col.addView(RunUi.button(this, "Menu style: Classic  (tap for cards)", RunUi.CARD, Color.WHITE) { setMenuStyle("cards") }
+                .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) } })
+            col.addView(RunUi.button(this, "Watch data screens ›", RunUi.ACCENT) { startActivity(Intent(ctx, ScreensActivity::class.java)) }
+                .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
+            col.addView(RunUi.button(this, "LiveTrack ›", 0xFF4FA3E0.toInt(), Color.WHITE) { startActivity(Intent(ctx, LiveTrackActivity::class.java)) }
+                .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) } })
+        }
         val sync = RunUi.text(this, "Same on the watch — changes on either show on both.", RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(4), 0, 0) }
         if (page in setOf("run", "audio", "zones")) col.addView(sync)
 
@@ -66,7 +82,7 @@ class RunSettingsActivity : Activity() {
                 })
                 if (sub.isNotBlank()) addView(RunUi.text(ctx, sub, RunUi.MUTED, 12f))
             })
-        if (page == "run") {
+        if (on("run")) {
         switch("Use GPS for pace & distance", "Off = Stryd footpod (recommended)", RunSettings.source(this) == "gps") {
             RunSettings.setSource(ctx, if (it) "gps" else "stryd")
         }
@@ -116,7 +132,7 @@ class RunSettingsActivity : Activity() {
 
         }
         // ---- audio prompts
-        if (page == "audio") {
+        if (on("audio")) {
         col.addView(RunUi.text(this, "Spoken on the watch: through Bluetooth headphones when connected, otherwise the watch speaker.",
             RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(6), dp(4), 0) })
         switch("Audio prompts", "", RunSettings.bool(this, "voice")) { RunSettings.setBool(ctx, "voice", it) }
@@ -144,7 +160,7 @@ class RunSettingsActivity : Activity() {
 
         }
         // ---- zones
-        if (page == "zones") {
+        if (on("zones")) {
         val maxHr = input("Max heart rate (bpm)", fmt(RunSettings.hrMax(this)), num)
         val restHr = input("Resting heart rate (bpm)", fmt(RunSettings.hrRest(this)), dec)
         val cp = input("Critical Power (W)", RunSettings.cp(this).toString(), num)
@@ -175,7 +191,7 @@ class RunSettingsActivity : Activity() {
         }.apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(16) } })
         }
         // ---- Command Center
-        if (page == "cc") {
+        if (on("cc")) {
             val cc = input("Command Center page", RunSettings.ccUrl(this), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
             col.addView(RunUi.text(this, "Where finished runs are sent and where \"Send plan to BeyondStride\" comes from.", RunUi.MUTED, 12f).apply { setPadding(dp(4), dp(6), 0, 0) })
             col.addView(RunUi.button(this, "Save", RunUi.ACCENT) {
@@ -189,7 +205,7 @@ class RunSettingsActivity : Activity() {
         getSharedPreferences("strydcloud", 0).edit().clear().apply()   // forget any old Stryd login
 
         // ---- backup
-        if (page == "backup") {
+        if (on("backup")) {
         col.addView(RunUi.card(this).apply {
             val at = Backup.lastAt(ctx)
             addView(RunUi.text(ctx, if (at == 0L) "No backup yet" else "Last backup: " +
@@ -214,7 +230,7 @@ class RunSettingsActivity : Activity() {
         switch("Update the backup after every run", "Keeps the saved backup file current automatically", Backup.auto(this)) { Backup.setAuto(ctx, it) }
         }
 
-        if (page == "about") {
+        if (on("about")) {
         col.addView(RunUi.text(this, "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName, RunUi.MUTED, 13f)
             .apply { setPadding(dp(4), dp(6), 0, 0) })
         val watchVer = RunUi.text(this, "Watch app: checking…", RunUi.MUTED, 13f).apply { setPadding(dp(4), dp(4), 0, 0) }
@@ -232,6 +248,11 @@ class RunSettingsActivity : Activity() {
         }
 
         show(col)
+    }
+
+    private fun setMenuStyle(v: String) {
+        getSharedPreferences("runsettings", 0).edit().putString("menuStyle", v).putLong("settingsAt", System.currentTimeMillis()).apply()
+        RunSettings.pushToWatch(this); page = null; render()
     }
 
     private fun show(col: LinearLayout) = setContentView(ScrollView(this).apply {
@@ -273,6 +294,7 @@ class RunSettingsActivity : Activity() {
         row("⇪", "Backup", Backup.lastAt(ctx).takeIf { it > 0 }?.let { "Last: " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(it)) +
             (if (Backup.auto(ctx) && Backup.uri(ctx) != null) " · auto" else "") } ?: "Not set up") { page = "backup"; render() }
         row("ⓘ", "About", "Phone app " + packageManager.getPackageInfo(packageName, 0).versionName) { page = "about"; render() }
+        row("☰", "Menu style", "Cards · tap to switch back to classic (phone and watch)") { setMenuStyle("classic") }
         show(col)
     }
 
