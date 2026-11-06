@@ -23,8 +23,9 @@ object RunUi {
     val BG: Int get() = io.github.michealsizemore1.top25widget.Theme.bg
     const val CARD = 0xFF1C2421.toInt()
     const val ACCENT = 0xFFD4E635.toInt()
-    const val MUTED = 0xFF9AA3A0.toInt()
-    const val DIM = 0xFF5E6663.toInt()
+    // Secondary text is brighter on the lighter background so it doesn't blend in.
+    val MUTED: Int get() = if (io.github.michealsizemore1.top25widget.Theme.light) 0xFFD3DAD7.toInt() else 0xFF9AA3A0.toInt()
+    val DIM: Int get() = if (io.github.michealsizemore1.top25widget.Theme.light) 0xFFBCC5C1.toInt() else 0xFF5E6663.toInt()
     const val HR = 0xFFFF6B6B.toInt()
     const val POWER = 0xFFFFB547.toInt()
     const val CC = 0xFF7B61FF.toInt()

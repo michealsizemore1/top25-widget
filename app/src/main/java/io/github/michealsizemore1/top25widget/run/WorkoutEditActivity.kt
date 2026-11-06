@@ -68,9 +68,12 @@ class WorkoutEditActivity : Activity() {
             it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             col.addView(it, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
         }
-        w.optString("planText").takeIf { it.isNotBlank() }?.let {
+        // The plan's original text — only if it says something the notes don't already.
+        w.optString("planText").takeIf { it.isNotBlank() && it.trim() != w.optString("notes").trim() }?.let {
             col.addView(RunUi.section(this, "FROM YOUR PLAN"))
-            col.addView(RunUi.text(this, it, RunUi.DIM, 12f).apply { setPadding(dp(4), dp(4), dp(4), 0) })
+            col.addView(RunUi.card(this).apply {
+                addView(RunUi.text(ctx, it.replace("**", "").replace(Regex("(?m)^#+\\s*"), "").replace(Regex("(?m)^-{3,}\\s*$"), "").trim(), Color.WHITE, 13f))
+            })
         }
 
         col.addView(RunUi.section(this, "STEPS · tap to change"))
