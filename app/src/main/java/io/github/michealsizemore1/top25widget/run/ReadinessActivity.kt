@@ -38,7 +38,15 @@ object SleepData {
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
     )
-    val REQUEST = PERMS + BACKGROUND
+    /** Overnight HRV — optional (only if Samsung Health shares it). */
+    val HRV = HealthPermission.getReadPermission(androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord::class)
+    val REQUEST = PERMS + BACKGROUND + HRV
+
+    fun hrvGranted(ctx: Context): Boolean = available(ctx) && try {
+        runBlocking { HealthConnectClient.getOrCreate(ctx).permissionController.getGrantedPermissions().contains(HRV) }
+    } catch (e: Exception) { false }
+    /** How many HRV readings the last refresh found (-1 = not allowed / couldn't read). */
+    fun hrvFound(ctx: Context) = ctx.getSharedPreferences("readiness", 0).getInt("hrvFound", -2)
 
     fun status(ctx: Context) = try { HealthConnectClient.getSdkStatus(ctx) } catch (e: Exception) { HealthConnectClient.SDK_UNAVAILABLE }
     fun available(ctx: Context) = status(ctx) == HealthConnectClient.SDK_AVAILABLE
@@ -59,6 +67,13 @@ object SleepData {
             val sessions = runBlocking {
                 client.readRecords(ReadRecordsRequest(SleepSessionRecord::class, TimeRangeFilter.between(start, end))).records
             }
+            // Overnight HRV readings, if Samsung Health shares them.
+            val hrvRecs = try {
+                runBlocking { client.readRecords(ReadRecordsRequest(androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord::class,
+                    TimeRangeFilter.between(start, end), pageSize = 5000)).records }.also {
+                    ctx.getSharedPreferences("readiness", 0).edit().putInt("hrvFound", it.size).apply()
+                }
+            } catch (e: Exception) { ctx.getSharedPreferences("readiness", 0).edit().putInt("hrvFound", -1).apply(); emptyList() }
             val asleep = setOf(SleepSessionRecord.STAGE_TYPE_SLEEPING, SleepSessionRecord.STAGE_TYPE_LIGHT,
                 SleepSessionRecord.STAGE_TYPE_DEEP, SleepSessionRecord.STAGE_TYPE_REM)
             // One night = every session that's within 2 hours of the next (a bathroom trip often splits the
@@ -96,7 +111,9 @@ object SleepData {
                     }.flatMap { r -> r.samples.map { it.beatsPerMinute.toInt() } }.filter { it in 30..150 }.sorted()
                     if (bpm.size >= 4) bpm.take(maxOf(2, bpm.size / 4)).average().toInt() else 0
                 } catch (e: Exception) { 0 } else 0
-                Readiness.Night(day, minutes, hr)
+                val hrv = hrvRecs.filter { it.time >= first.minus(30, ChronoUnit.MINUTES) && it.time <= last.plus(30, ChronoUnit.MINUTES) }
+                    .map { it.heartRateVariabilityMillis }.filter { it in 5.0..300.0 }
+                Readiness.Night(day, minutes, hr, hrv = if (hrv.isNotEmpty()) Math.round(hrv.average()).toInt() else 0)
             }.filter { it.minutes > 0 }
             ReadinessSync.setNights(ctx, nights)
             nights.size
@@ -261,13 +278,25 @@ class ReadinessActivity : Activity() {
                             setOnClickListener { editSleep(n.day) }
                             addView(RunUi.text(ctx, java.time.LocalDate.parse(n.day).let { it.dayOfWeek.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() } + " " + it.monthValue + "/" + it.dayOfMonth },
                                 RunUi.MUTED, 14f), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                            addView(RunUi.text(ctx, (if (n.manual) "✎ " else "") + Readiness.hmm(n.minutes) + (if (n.sleepHr > 0) " · ${n.sleepHr} bpm" else ""),
+                            addView(RunUi.text(ctx, (if (n.manual) "✎ " else "") + Readiness.hmm(n.minutes) + (if (n.sleepHr > 0) " · ${n.sleepHr} bpm" else "") + (if (n.hrv > 0) " · ${n.hrv} ms" else ""),
                                 if (n.manual) RunUi.ACCENT else Color.WHITE, 14f, true))
                         })
                     }
                     if (nights.none { it.day == Readiness.today() }) addView(RunUi.button(ctx, "Enter last night's sleep", RunUi.CARD, Color.WHITE) { editSleep(Readiness.today()) }
                         .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) } })
-                    addView(RunUi.text(ctx, "Time asleep · sleeping heart rate. Tap a night to fix the time (e.g. a bathroom trip counted as awake). ✎ = entered by you.", RunUi.DIM, 11f).apply { setPadding(0, dp(4), 0, 0) })
+                    addView(RunUi.text(ctx, "Time asleep · sleeping heart rate · sleeping HRV. Tap a night to fix the time (e.g. a bathroom trip counted as awake). ✎ = entered by you.", RunUi.DIM, 11f).apply { setPadding(0, dp(4), 0, 0) })
+                    // Samsung overnight HRV status.
+                    val found = SleepData.hrvFound(ctx)
+                    when {
+                        !SleepData.hrvGranted(ctx) -> {
+                            addView(RunUi.text(ctx, "Samsung's overnight HRV: allow access to check whether Samsung Health shares it.", RunUi.ACCENT, 12f).apply { setPadding(0, dp(8), 0, 0) })
+                            addView(RunUi.button(ctx, "Allow HRV", RunUi.CARD, Color.WHITE) { askHealth() }
+                                .apply { layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) } })
+                        }
+                        found > 0 -> addView(RunUi.text(ctx, "✓ Samsung shares overnight HRV ($found readings) — readiness uses it on days without a morning check.", 0xFF5FD38D.toInt(), 12f).apply { setPadding(0, dp(8), 0, 0) })
+                        found == 0 -> addView(RunUi.text(ctx, "Samsung Health isn't sharing HRV with Health Connect, so the morning check is still the way to get HRV into readiness.", RunUi.MUTED, 12f).apply { setPadding(0, dp(8), 0, 0) })
+                        else -> addView(RunUi.text(ctx, "Checking for Samsung HRV…", RunUi.MUTED, 12f).apply { setPadding(0, dp(8), 0, 0) })
+                    }
                 }
             }
         })

@@ -27,7 +27,7 @@ object ReadinessSync {
     /** Nights read from Health Connect. A time you entered yourself is kept (the watch's number is saved beside it). */
     fun setNights(ctx: Context, l: List<Readiness.Night>) {
         val old = nights(ctx).associateBy { it.day }
-        val fresh = l.map { n -> old[n.day]?.takeIf { it.manual }?.copy(auto = n.minutes, sleepHr = n.sleepHr) ?: n.copy(auto = n.minutes, editAt = old[n.day]?.editAt ?: 0L) }
+        val fresh = l.map { n -> old[n.day]?.takeIf { it.manual }?.copy(auto = n.minutes, sleepHr = n.sleepHr, hrv = n.hrv) ?: n.copy(auto = n.minutes, editAt = old[n.day]?.editAt ?: 0L) }
         val merged = (nights(ctx).filter { n -> fresh.none { it.day == n.day } } + fresh).sortedBy { it.day }
         p(ctx).edit().putString("nights", Readiness.nightsJson(merged)).putLong("nightsAt", System.currentTimeMillis()).apply()
         push(ctx, NIGHTS, Readiness.nightsJson(merged))
@@ -67,7 +67,7 @@ object ReadinessSync {
                 // Newest edit wins; otherwise the other device's (newer) reading.
                 val merged = (mine.keys + theirs.keys).map { d ->
                     val m = mine[d]; val t = theirs[d]
-                    when { t == null -> m!!; m == null -> t; m.editAt > t.editAt -> m.copy(auto = t.auto, sleepHr = maxOf(t.sleepHr, m.sleepHr)); else -> t }
+                    when { t == null -> m!!; m == null -> t; m.editAt > t.editAt -> m.copy(auto = t.auto, sleepHr = maxOf(t.sleepHr, m.sleepHr), hrv = maxOf(t.hrv, m.hrv)); else -> t }
                 }.sortedBy { it.day }
                 p(ctx).edit().putString("nights", Readiness.nightsJson(merged)).putLong("nightsAt", System.currentTimeMillis()).apply()
             }

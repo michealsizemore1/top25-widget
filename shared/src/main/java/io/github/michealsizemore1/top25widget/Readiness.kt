@@ -55,6 +55,7 @@ object Readiness {
         val manual: Boolean = false,  // time asleep entered by you (wins over the watch's number)
         val auto: Int = 0,            // what the watch measured (kept so you can go back to it)
         val editAt: Long = 0L,        // when you last changed it (newest edit wins between phone and watch)
+        val hrv: Int = 0,             // Samsung's overnight HRV (ms), if it shares it
     )
 
     fun checksFrom(s: String?): List<Check> = try {
@@ -77,13 +78,13 @@ object Readiness {
     fun nightsFrom(s: String?): List<Night> = try {
         val a = JSONArray(s ?: "[]")
         (0 until a.length()).map { a.getJSONObject(it) }.map {
-            Night(it.getString("day"), it.optInt("min"), it.optInt("hr"), it.optBoolean("man"), it.optInt("auto", it.optInt("min")), it.optLong("edit"))
+            Night(it.getString("day"), it.optInt("min"), it.optInt("hr"), it.optBoolean("man"), it.optInt("auto", it.optInt("min")), it.optLong("edit"), it.optInt("hrv"))
         }
     } catch (e: Exception) { emptyList() }
 
     fun nightsJson(l: List<Night>) = JSONArray().apply {
         l.sortedBy { it.day }.takeLast(90).forEach { put(JSONObject().put("day", it.day).put("min", it.minutes).put("hr", it.sleepHr)
-            .put("man", it.manual).put("auto", it.auto).put("edit", it.editAt)) }
+            .put("man", it.manual).put("auto", it.auto).put("edit", it.editAt).put("hrv", it.hrv)) }
     }.toString()
 
     // ---------------------------------------------------------------- the score
@@ -130,6 +131,23 @@ object Readiness {
                 }
                 parts += Part("HRV", "${v.roundToInt()} ms", clamp(80 + 20 * z), note, 35)
             } else parts += Part("HRV", "${v.roundToInt()} ms", -1, "learning your normal · ${prior.size}/5 mornings", 0)
+        } else {
+            // No morning check: use Samsung's overnight HRV against its own normal (it runs lower than the morning check).
+            val nToday = nights.lastOrNull { it.day == today && it.hrv > 0 }
+            val nPrior = nights.filter { it.day < today && it.hrv > 0 && daysBetween(it.day, today) in 1..60 }
+            if (nToday != null) {
+                if (nPrior.size >= 5) {
+                    val lns = nPrior.map { ln(it.hrv.toDouble()) }
+                    val mean = lns.average()
+                    val sd = maxOf(0.05, sqrt(lns.sumOf { (it - mean) * (it - mean) } / (lns.size - 1)))
+                    val z = (ln(nToday.hrv.toDouble()) - mean) / sd; hrvZ = z
+                    val normal = kotlin.math.exp(mean).roundToInt()
+                    parts += Part("Sleep HRV", "${nToday.hrv} ms", clamp(80 + 20 * z), when {
+                        z < -1.5 -> "well below your normal ($normal ms)"; z < -0.5 -> "a little below your normal ($normal ms)"
+                        z > 1.5 -> "well above your normal ($normal ms)"; else -> "in your normal range (~$normal ms)"
+                    }, 35)
+                } else parts += Part("Sleep HRV", "${nToday.hrv} ms", -1, "learning your normal · ${nPrior.size}/5 nights", 0)
+            }
         }
         // Resting heart rate from the morning check (or overnight from Samsung Health).
         if (todayCheck != null && todayCheck.hr > 0 && prior.size >= 5) {
@@ -181,7 +199,7 @@ object Readiness {
         var score = (scored.sumOf { it.pts * it.weight }.toDouble() / scored.sumOf { it.weight }).roundToInt()
         if ((hrvZ ?: 0.0) < -1.5) score = minOf(score, 49)
         if (night != null && night.minutes < 300) score = minOf(score, 64)
-        if (todayCheck == null) score = minOf(score, 80)   // no HRV: don't promise "fully ready"
+        if (todayCheck == null && parts.none { it.name == "Sleep HRV" && it.pts >= 0 }) score = minOf(score, 80)   // no HRV: don't promise "fully ready"
 
         val (label, color) = when { score >= 70 -> "Ready" to GREEN; score >= 50 -> "Moderate" to YELLOW; else -> "Low" to RED }
         val drag = scored.filter { it.pts < 60 }.minByOrNull { it.pts }
@@ -190,7 +208,7 @@ object Readiness {
             "Moderate" -> "Run today's plan but keep the hard parts controlled. If it feels off, make it an easy Zone 2 run."
             else -> "Make today easy Zone 2 (or rest). Swap any intervals or tempo for another day."
         } + (drag?.let { " Biggest factor: ${it.name.lowercase()} — ${it.note}." } ?: "") +
-            (if (todayCheck == null) " Do the 2-minute morning check for the full picture." else "")
+            (if (todayCheck == null && parts.none { it.name == "Sleep HRV" }) " Do the 2-minute morning check for the full picture." else "")
         return Result(score, label, color, advice, parts, todayCheck != null, prior.size)
     }
 
