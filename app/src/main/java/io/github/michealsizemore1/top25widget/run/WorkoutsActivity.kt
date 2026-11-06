@@ -36,7 +36,17 @@ class WorkoutsActivity : Activity() {
         val ctx = this
         fun dp(v: Int) = RunUi.dp(ctx, v)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(40), dp(16), dp(40)) }
-        col.addView(RunUi.text(this, "Workouts", Color.WHITE, 28f, true))
+        col.addView(RunUi.text(this, "Plan", Color.WHITE, 28f, true))
+        // Trails & saved courses.
+        col.addView(RunUi.card(this).apply {
+            addView(RunUi.text(ctx, "Trails & courses", Color.WHITE, 17f, true))
+            val tr = io.github.michealsizemore1.top25widget.TrailSync.current(ctx)
+            val saved = io.github.michealsizemore1.top25widget.Courses.list(ctx).size
+            addView(RunUi.text(ctx, (tr?.let { "Chosen: ${it.first.name}" } ?: "Find trails near you") + (if (saved > 0) " · $saved saved course" + (if (saved == 1) "" else "s") else "") + "  ▸",
+                if (tr != null) 0xFF46C46E.toInt() else RunUi.MUTED, 13f))
+            setOnClickListener { startActivity(Intent(ctx, TrailsActivity::class.java)) }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(12) }
+        })
 
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -50,10 +60,10 @@ class WorkoutsActivity : Activity() {
 
         if (tab == "plan") renderPlan(col) else renderLibrary(col)
 
-        setContentView(ScrollView(this).apply {
+        setContentView(RunUi.tabbed(this, ScrollView(this).apply {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        })
+        }, RunUi.TAB_PLAN))
     }
 
     private fun renderPlan(col: LinearLayout) {

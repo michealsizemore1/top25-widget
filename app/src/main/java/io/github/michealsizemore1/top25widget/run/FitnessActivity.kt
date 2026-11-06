@@ -7,6 +7,10 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.view.Gravity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import io.github.michealsizemore1.top25widget.RunMath
 
 /** Fitness details: training load, Zone 2 trend, personal bests, aerobic decoupling (from the home screen's Fitness card). */
@@ -18,6 +22,63 @@ class FitnessActivity : Activity() {
         val dp = { v: Int -> RunUi.dp(ctx, v) }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(40), dp(16), dp(32)) }
         col.addView(RunUi.text(this, "Fitness", Color.WHITE, 26f, true))
+        val runs = PhoneRuns.list(this).mapNotNull { PhoneRuns.read(it) }
+        val I = io.github.michealsizemore1.top25widget.Insights
+        val hrMax = RunSettings.hrMax(this); val hrRest = RunSettings.hrRest(this)
+        // Readiness (tap for details).
+        io.github.michealsizemore1.top25widget.Readiness.compute(io.github.michealsizemore1.top25widget.ReadinessSync.checks(this),
+            io.github.michealsizemore1.top25widget.ReadinessSync.nights(this), runs.take(120), io.github.michealsizemore1.top25widget.Readiness.today())?.let { rd ->
+            col.addView(RunUi.section(this, "READINESS"))
+            col.addView(RunUi.card(this).apply {
+                addView(RunUi.text(ctx, "${rd.score}  ${rd.label}", rd.color, 22f, true))
+                addView(RunUi.text(ctx, rd.parts.filter { it.pts >= 0 }.joinToString(" · ") { "${it.name} ${it.value}" }, RunUi.MUTED, 12f))
+                addView(RunUi.text(ctx, "Details, sleep, resting HR and critical power ▸", RunUi.ACCENT, 13f, true).apply { setPadding(0, dp(6), 0, 0) })
+                setOnClickListener { startActivity(Intent(ctx, ReadinessActivity::class.java)) }
+            })
+        }
+        col.addView(RunUi.section(this, "OVERVIEW"))
+        // Overview tiles (charts below).
+        if (runs.isNotEmpty()) {
+            val (z2now, z2before) = I.z2Trend(runs.take(200), hrMax, hrRest)
+            val D = io.github.michealsizemore1.top25widget.Decoupling
+            val now = System.currentTimeMillis()
+            val dec = runs.take(120).filter { now - it.optLong("start") < 28 * 86_400_000L }
+                .mapNotNull { r -> D.of(r)?.takeIf { it.steady && it.minutes >= 30 && it.main != null }?.main }
+            val cpNow = RunSettings.cp(this)
+            val cpE = io.github.michealsizemore1.top25widget.CriticalPower.estimate(runs.take(200), currentCp = cpNow)
+            val rec = I.records(runs.take(200))
+            val latestPb = rec.maxByOrNull { it.value.start }
+            fun tile(label: String, value: String, sub: String, color: Int, onClick: () -> Unit) = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                background = RunUi.rounded(RunUi.CARD, dp(16).toFloat())
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                addView(RunUi.text(ctx, label, RunUi.MUTED, 11f, true))
+                addView(RunUi.text(ctx, value, color, 18f, true))
+                addView(RunUi.text(ctx, sub, RunUi.MUTED, 11f))
+                setOnClickListener { onClick() }
+            }
+            fun row(a: android.view.View, b: android.view.View) = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+                addView(a, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f).apply { marginEnd = dp(8) })
+                addView(b, LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
+            }
+            val openFit = { }
+            col.addView(row(
+                tile("ZONE 2 PACE", z2now?.let { RunMath.paceFor(it, RunMath.METERS_PER_MILE) + " /mi" } ?: "—",
+                    z2now?.let { n -> z2before?.let { b -> val d = b - n; if (d >= 0) "${d}s faster than before" else "${-d}s slower than before" } ?: "last 4 weeks" } ?: "no Zone 2 runs yet",
+                    Color.WHITE, openFit),
+                tile("DECOUPLING", if (dec.isEmpty()) "—" else D.text(dec.average()), if (dec.isEmpty()) "needs a 30+ min steady run" else D.rating(dec.average()),
+                    if (dec.isEmpty()) Color.WHITE else D.color(dec.average()), openFit),
+            ))
+            col.addView(row(
+                tile("CRITICAL POWER", "$cpNow W", cpE.cp?.let { if (kotlin.math.abs(it - cpNow) >= 3) "runs say $it W ▸" else "matches your runs" } ?: "needs a hard effort to update",
+                    Color.WHITE) { startActivity(Intent(ctx, ReadinessActivity::class.java)) },
+                tile("PERSONAL BESTS", latestPb?.let { I.clock(it.value.sec) } ?: "—",
+                    latestPb?.let { I.pbName(it.key) + " · " + SimpleDateFormat("MMM d", Locale.US).format(Date(it.value.start)) } ?: "after your first runs",
+                    if (latestPb != null) 0xFFF2C94C.toInt() else Color.WHITE, openFit),
+            ))
+        }
         // Training load, Zone 2 fitness, personal bests.
         run {
             val all = PhoneRuns.list(this).take(200).mapNotNull { PhoneRuns.read(it) }
@@ -127,9 +188,9 @@ class FitnessActivity : Activity() {
                 })
             }
         }
-        setContentView(ScrollView(this).apply {
+        setContentView(RunUi.tabbed(this, ScrollView(this).apply {
             setBackgroundColor(RunUi.BG)
             addView(col, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        })
+        }, RunUi.TAB_FITNESS))
     }
 }

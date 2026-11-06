@@ -54,6 +54,50 @@ object RunUi {
             setOnClickListener { onClick() }
         }
 
+    const val TAB_TODAY = 0; const val TAB_FITNESS = 1; const val TAB_PLAN = 2; const val TAB_RUNS = 3
+
+    /** Page content with the bottom tab bar (Today · Fitness · Plan · Runs). */
+    fun tabbed(act: android.app.Activity, content: View, selected: Int): View {
+        val tabs = listOf(
+            Triple("Today", "☀", RunsActivity::class.java),
+            Triple("Fitness", "♥", FitnessActivity::class.java),
+            Triple("Plan", "▦", WorkoutsActivity::class.java),
+            Triple("Runs", "≡", AllRunsActivity::class.java),
+        )
+        val bar = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(0xFF0E1412.toInt())
+            setPadding(dp(act, 6), dp(act, 6), dp(act, 6), dp(act, 6))
+            tabs.forEachIndexed { i, (name, glyph, cls) ->
+                val on = i == selected
+                addView(LinearLayout(act).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                    addView(text(act, glyph, if (on) Color.BLACK else MUTED, 20f, true).apply {
+                        gravity = Gravity.CENTER
+                        if (on) background = rounded(ACCENT, dp(act, 16).toFloat())
+                        setPadding(0, dp(act, 3), 0, dp(act, 3))
+                    }, LinearLayout.LayoutParams(dp(act, 64), WRAP_CONTENT))
+                    addView(text(act, name, if (on) Color.WHITE else MUTED, 12f, on).apply { gravity = Gravity.CENTER; setPadding(0, dp(act, 2), 0, 0) })
+                    if (!on) setOnClickListener {
+                        act.startActivity(android.content.Intent(act, cls).addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION))
+                        @Suppress("DEPRECATION") act.overridePendingTransition(0, 0)
+                    }
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            }
+            // Stay above the phone's own navigation buttons.
+            setOnApplyWindowInsetsListener { v, insets ->
+                @Suppress("DEPRECATION") val b = if (android.os.Build.VERSION.SDK_INT >= 30) insets.getInsets(android.view.WindowInsets.Type.systemBars()).bottom else insets.systemWindowInsetBottom
+                v.setPadding(dp(act, 6), dp(act, 6), dp(act, 6), dp(act, 6) + b); insets
+            }
+        }
+        return LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(BG)
+            addView(content, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+            addView(View(act).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, 1))
+            addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        }
+    }
+
     /** Section heading: lime with a short bar in front, so it stands apart from card text. */
     fun section(ctx: Context, title: String) = text(ctx, title, ACCENT, 15f, true).apply {
         letterSpacing = 0.08f; setPadding(dp(ctx, 2), dp(ctx, 22), 0, dp(ctx, 2))

@@ -486,10 +486,26 @@ class RunActivity : Activity() {
             setOnClickListener { onClick() }
         }
         Run.nav?.trail?.let { t -> col.addView(navButton("Directions to trail start", C.CARD, Color.WHITE) { showDirections(t) }) }
-        col.addView(navButton("Trails near me", C.CARD, Color.WHITE) { showTrails() })
-        col.addView(navButton("Workouts & Plan", C.CARD, Color.WHITE) { showWorkoutPicker() })
-        col.addView(navButton("History", C.CARD, Color.WHITE) { startActivity(Intent(this, RunHistoryActivity::class.java)) })
-        col.addView(navButton("Settings", C.CARD, Color.WHITE) { showSettings = true; startBuilt = false; renderStart() })
+        // Icon row (like the phone's bottom tabs): Workouts · Trails · History · Settings.
+        col.addView(View(this).apply { setBackgroundColor(0x22FFFFFF) }, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(10) })
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+            listOf<Triple<String, String, () -> Unit>>(
+                Triple("☰", "Plan", { showWorkoutPicker() }),
+                Triple("⛰", "Trails", { showTrails() }),
+                Triple("▤", "History", { startActivity(Intent(this@RunActivity, RunHistoryActivity::class.java)) }),
+                Triple("⚙", "Settings", { showSettings = true; startBuilt = false; renderStart() }),
+            ).forEach { (glyph, name, go) ->
+                addView(column().apply {
+                    gravity = Gravity.CENTER
+                    addView(label(glyph, Color.WHITE, 18f, true).apply { background = rounded(C.CARD, 18); setPadding(0, dp(6), 0, dp(6)) },
+                        LinearLayout.LayoutParams(dp(40), WRAP_CONTENT))
+                    addView(label(name, C.MUTED, 8f))
+                    setOnClickListener { go() }
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            }
+        })
 
         root.removeAllViews()
         root.addView(ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(col); requestFocus() })
